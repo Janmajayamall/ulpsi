@@ -4,6 +4,9 @@ use bfv::{
 };
 use rand::thread_rng;
 use rand_chacha::rand_core::le;
+use utils::{decrypt_and_print, rtg_indices_and_levels};
+
+mod utils;
 
 fn to_power(x: &Ciphertext, evaluator: &Evaluator, ek: &EvaluationKey, power: usize) -> Ciphertext {
     assert!(power.is_power_of_two());
@@ -64,30 +67,6 @@ fn inner_sum(x: &Ciphertext, evaluator: &Evaluator, ek: &EvaluationKey) -> Ciphe
     x
 }
 
-fn rtg_indices_and_levels(degree: usize) -> (Vec<isize>, Vec<usize>) {
-    let mut rtg_levels = vec![];
-    let mut rtg_indices = vec![];
-
-    let level = 0usize;
-    // inner sum
-    let degree_by_2 = (degree >> 1) as isize;
-    let mut i = 1;
-    while i < degree_by_2 {
-        rtg_indices.push(i);
-        rtg_levels.push(level);
-        i *= 2;
-    }
-    // row swap
-    rtg_indices.push((2 * degree - 1) as isize);
-    rtg_levels.push(level);
-
-    // inner sum covers rot by 1, but just adding it here for levelled implementation
-    rtg_indices.push(1);
-    rtg_levels.push(level);
-
-    (rtg_indices, rtg_levels)
-}
-
 fn multiplication_tree(cts: &mut [Ciphertext], evaluator: &Evaluator, ek: &EvaluationKey) {
     assert!(cts.len().is_power_of_two());
     let mut depth = (cts.len() as f64).log2();
@@ -105,21 +84,9 @@ fn multiplication_tree(cts: &mut [Ciphertext], evaluator: &Evaluator, ek: &Evalu
     }
 }
 
-fn decrypt_and_print(
-    evaluator: &Evaluator,
-    sk: &SecretKey,
-    ct: &Ciphertext,
-    tag: &str,
-    m_start: usize,
-    m_end: usize,
-) {
-    let noise = evaluator.measure_noise(sk, ct);
-    let m = &evaluator.plaintext_decode(&evaluator.decrypt(sk, ct), Encoding::default())
-        [m_start..m_end];
-    println!("{tag} - Noise: {noise}; m[{m_start}..{m_end}]: {:?}", m);
-}
-
-fn extract_tag_slots(
+/// Extracts `slot_count` lanes starting from `offset` into individuals ciphertexts. Takes care of extracting
+/// each value in same lane in new ciphertexts. Multiplies extract ciphertext into one, expands the result, and returns
+fn extract_tag_slots_and_return_pv(
     evaluator: &Evaluator,
     ek: &EvaluationKey,
     x: &Ciphertext,
@@ -200,7 +167,7 @@ mod tests {
         // equality
         let mut r_ct = equality(&evaluator, &ek, &ct, &pt2, &sk);
         evaluator.ciphertext_change_representation(&mut r_ct, Representation::Evaluation);
-        let pv_ct = extract_tag_slots(&evaluator, &ek, &r_ct, 16, 16, &sk);
+        let pv_ct = extract_tag_slots_and_return_pv(&evaluator, &ek, &r_ct, 16, 16, &sk);
         dbg!(evaluator.measure_noise(&sk, &pv_ct));
 
         decrypt_and_print(&evaluator, &sk, &pv_ct, "pv_ct", 0, 10);
@@ -259,6 +226,60 @@ mod tests {
         });
 
         assert_eq!(res_m, expected_res);
+    }
+
+    #[test]
+    fn extract_tag_slots_works() {
+        let mut params = BfvParameters::new(&[50; 15], 65537, 1 << 14);
+        params.enable_hybrid_key_switching(&[50, 50, 50]);
+
+        let mut rng = thread_rng();
+
+        // gen keys
+        let sk = SecretKey::random_with_params(&params, &mut rng);
+        let (rtg_indices, rtg_levels) = rtg_indices_and_levels(params.degree);
+        let ek = EvaluationKey::new(&params, &sk, &[0], &rtg_levels, &rtg_indices, &mut rng);
+
+        let evaluator = Evaluator::new(params);
+
+        let mut m = vec![1; evaluator.params().degree];
+        let slot_count = 16;
+
+        // Think of lanes divided in sets of `slot_count`. pertinency vector corresponding to each set will be 1 only when
+        // all lanes in the set are 1, otherwise it will be 0.
+        // We intentionally set set 1 and 3 to have pertinency vector as 0.
+        m[slot_count - 1] = 0; // set 1
+        m[slot_count * 2 + 1] = 0; // set 2
+
+        let mut x = evaluator.encrypt(
+            &sk,
+            &evaluator.plaintext_encode(&m, Encoding::default()),
+            &mut rng,
+        );
+        evaluator.ciphertext_change_representation(&mut x, Representation::Evaluation);
+
+        // `pv` of set 1,3 should be 0 and 1 for rest of the sets
+        // set 1
+        let pv1 = extract_tag_slots_and_return_pv(&evaluator, &ek, &x, slot_count, 0, &sk);
+        // set 3
+        let pv3 =
+            extract_tag_slots_and_return_pv(&evaluator, &ek, &x, slot_count, slot_count * 2, &sk);
+        let pv1_m = evaluator.plaintext_decode(&evaluator.decrypt(&sk, &pv1), Encoding::default());
+        let pv3_m = evaluator.plaintext_decode(&evaluator.decrypt(&sk, &pv3), Encoding::default());
+        assert_eq!(pv1_m, pv3_m);
+        assert_eq!(pv1_m, vec![0; evaluator.params().degree]);
+
+        // `pv` for set 2,5 (and the rest) should be 1
+        // set 2
+        let pv2 =
+            extract_tag_slots_and_return_pv(&evaluator, &ek, &x, slot_count, slot_count * 1, &sk);
+        // set 5
+        let pv5 =
+            extract_tag_slots_and_return_pv(&evaluator, &ek, &x, slot_count, slot_count * 4, &sk);
+        let pv2_m = evaluator.plaintext_decode(&evaluator.decrypt(&sk, &pv2), Encoding::default());
+        let pv5_m = evaluator.plaintext_decode(&evaluator.decrypt(&sk, &pv5), Encoding::default());
+        assert_eq!(pv2_m, pv5_m);
+        assert_eq!(pv2_m, vec![1; evaluator.params().degree]);
     }
 
     #[test]
