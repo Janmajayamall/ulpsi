@@ -1,0 +1,12 @@
+[package]
+name = "psi"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bfv = {path = "./../bfv/bfv"}
+rand = "0.8.5"
+itertools = "0.10.5"
+rand_chacha = "0.3.1"
