@@ -17,7 +17,7 @@ fn to_power(x: &Ciphertext, evaluator: &Evaluator, ek: &EvaluationKey, power: us
     x
 }
 
-fn is_equal(
+fn equality(
     evaluator: &Evaluator,
     ek: &EvaluationKey,
     x: &Ciphertext,
@@ -34,9 +34,16 @@ fn is_equal(
         (evaluator.params().plaintext_modulus - 1) as usize,
     );
 
-    decrypt_and_print(evaluator, sk, &x, "is_equal", 0, 10);
+    // decrypt_and_print(evaluator, sk, &x, "is_equal", 0, 10);
 
-    // TODO sub from 1
+    // sub from 1
+    evaluator.negate_assign(&mut x);
+    let one = evaluator.plaintext_encode(
+        &vec![1; evaluator.params().degree],
+        Encoding::simd(0, PolyCache::AddSub(Representation::Coefficient)),
+    );
+    evaluator.add_assign_plaintext(&mut x, &one);
+
     x
 }
 
@@ -160,6 +167,7 @@ fn extract_tag_slots(
 mod tests {
     use bfv::Representation;
     use itertools::Itertools;
+    use rand::Rng;
 
     use super::*;
 
@@ -190,13 +198,67 @@ mod tests {
         );
 
         // equality
-        let mut r_ct = is_equal(&evaluator, &ek, &ct, &pt2, &sk);
+        let mut r_ct = equality(&evaluator, &ek, &ct, &pt2, &sk);
         evaluator.ciphertext_change_representation(&mut r_ct, Representation::Evaluation);
         let pv_ct = extract_tag_slots(&evaluator, &ek, &r_ct, 16, 16, &sk);
         dbg!(evaluator.measure_noise(&sk, &pv_ct));
 
         decrypt_and_print(&evaluator, &sk, &pv_ct, "pv_ct", 0, 10);
         // dbg!(res_m);
+    }
+
+    #[test]
+    fn equality_works() {
+        let mut params = BfvParameters::new(&[50; 15], 65537, 1 << 14);
+        params.enable_hybrid_key_switching(&[50, 50, 50]);
+
+        let mut rng = thread_rng();
+
+        // gen keys
+        let sk = SecretKey::random_with_params(&params, &mut rng);
+        let ek = EvaluationKey::new(&params, &sk, &[0], &[], &[], &mut rng);
+
+        let evaluator = Evaluator::new(params);
+
+        let mut m0 = evaluator
+            .params()
+            .plaintext_modulus_op
+            .random_vec(evaluator.params().degree, &mut rng);
+        let mut m1 = m0.clone();
+
+        // select random indices and make them different in m0 and m1
+        let mut diff_indices = vec![];
+        while diff_indices.len() != 100 {
+            let v = rng.gen_range(0..=evaluator.params().degree);
+            if !diff_indices.contains(&v) {
+                diff_indices.push(v);
+            }
+        }
+        diff_indices.iter().for_each(|i| {
+            m1[*i] = m0[*i] + 1;
+        });
+
+        let ct = evaluator.encrypt(
+            &sk,
+            &evaluator.plaintext_encode(&m0, Encoding::default()),
+            &mut rng,
+        );
+        let pt1 = evaluator.plaintext_encode(
+            &m1,
+            Encoding::simd(0, PolyCache::AddSub(Representation::Coefficient)),
+        );
+
+        let res = equality(&evaluator, &ek, &ct, &pt1, &sk);
+        let res_m = evaluator.plaintext_decode(&evaluator.decrypt(&sk, &res), Encoding::default());
+        // all indices, except the ones in `diff_indices`, are equal. Thus
+        // `equality` should return ciphertext with 1 at all indices except the ones
+        // in `diff_indices` where value must be 0.
+        let mut expected_res = vec![1; evaluator.params().degree];
+        diff_indices.iter().for_each(|i| {
+            expected_res[*i] = 0;
+        });
+
+        assert_eq!(res_m, expected_res);
     }
 
     #[test]
