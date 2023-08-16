@@ -1,5 +1,7 @@
+use std::{collections::HashMap, hash::Hash};
+
 use bfv::{
-    BfvParameters, Ciphertext, Encoding, EvaluationKey, Evaluator, Plaintext, PolyCache, PolyType,
+    BfvParameters, Ciphertext, Encoding, EvaluationKey, Evaluator, PolyCache, PolyType,
     Representation, SecretKey,
 };
 use rand::thread_rng;
@@ -7,6 +9,89 @@ use rand_chacha::rand_core::le;
 use utils::{decrypt_and_print, rtg_indices_and_levels};
 
 mod utils;
+
+struct PsiParams {
+    item_size: usize,
+    label_size: usize,
+    /// Max. no. of items stores at server
+    server_item_count: usize,
+    /// Max. no. of items client can request at once
+    client_item_count: usize,
+
+    // BFV params
+    bfv_degree: usize,
+    plaintext_bits: usize,
+}
+
+impl PsiParams {
+    /// No. of lanes that a single item occupies
+    fn lanes_per_item(&self) -> usize {
+        (self.item_size + self.plaintext_bits) / self.plaintext_bits
+    }
+}
+
+struct ItemLabel(u32, u32);
+
+struct PsiPlaintext(u64);
+impl PsiPlaintext {
+    fn bit_space(&self) -> u32 {
+        64 - self.0.leading_zeros() - 1
+    }
+}
+
+impl ItemLabel {
+    pub fn label(&self) -> u32 {
+        self.1
+    }
+
+    /// label is assumed to be divided in chunks with each chunk having
+    /// plaintext space bits. Function returns chunk at index
+    pub fn bit_chunk(&self, index: usize, psi_pt: &PsiPlaintext) -> u32 {
+        todo!()
+    }
+}
+
+struct PolyCoefficientsCache {
+    coefficients_2d: Vec<u32>,
+    label_size: usize,
+    psi_plaintext: PsiPlaintext,
+}
+
+impl PolyCoefficientsCache {
+    // constructs polynomials with degree len(iterm_labels). Divdes each label in
+    // `label_size/plaintext_bit_space` parts and interpolates a polynomial for each.
+    pub fn new(item_labels: &[ItemLabel], psi_plaintext: &PsiPlaintext) -> PolyCoefficientsCache {
+        todo!()
+    }
+}
+
+struct Db {
+    data: HashMap<u32, Vec<ItemLabel>>,
+    hash_table_size: u32,
+    lane_per_item: u32,
+    poly_coeff_cache: HashMap<u32, Vec<PolyCoefficientsCache>>,
+}
+
+impl Db {
+    fn insert(&mut self, item_label: ItemLabel) {
+        //TODO use the hash function to hash
+        let item_hash = 0 % self.hash_table_size;
+
+        if self.data.contains_key(&item_hash) {
+            self.data.get_mut(&item_hash).unwrap().push(item_label);
+        } else {
+            let values = vec![item_label];
+            self.data.insert(item_hash, values);
+        }
+    }
+
+    fn iterpolate(&self) {}
+}
+
+struct Server {
+    raw_label_data: Vec<u32>,
+    raw_item_data: Vec<u32>,
+}
 
 fn to_power(x: &Ciphertext, evaluator: &Evaluator, ek: &EvaluationKey, power: usize) -> Ciphertext {
     assert!(power.is_power_of_two());
