@@ -1,6 +1,5 @@
-use crate::{ItemLabel, PsiPlaintext};
-
-use itertools::Itertools;
+use crate::{poly_interpolate::newton_interpolate, ItemLabel, PsiPlaintext};
+use itertools::{izip, Itertools};
 use ndarray::Array2;
 
 /// Poly Degree
@@ -40,20 +39,24 @@ impl HashTableRow {
 }
 
 struct InnerBox {
+    coefficients_data: Array2<u32>,
     item_data: Array2<u32>,
     label_data: Array2<u32>,
     /// Each row has `lane_space` lanes
     ht_rows: Vec<HashTableRow>,
     lane_span: usize,
+    eval_degree: usize,
     /// Is set to initialised when a new item is added
     initialised: bool,
+    psi_pt: PsiPlaintext,
 }
 
 impl InnerBox {
     /// Since a single item spans across `lane_span`. InnerBox
     /// has bfv_degree / lane_span hash table rows. Remember that each `HashTableRow`
     /// has `lane_span`rows.
-    fn new(lane_span: usize, bfv_degree: usize, eval_degree: usize) -> InnerBox {
+    fn new(psi_pt: &PsiPlaintext, bfv_degree: usize, eval_degree: usize) -> InnerBox {
+        let lane_span = psi_pt.lane_span();
         let hash_table_rows = (0..(bfv_degree / lane_span))
             .into_iter()
             .map(|_| HashTableRow::new(lane_span, eval_degree))
@@ -63,11 +66,14 @@ impl InnerBox {
         let item_data = Array2::<u32>::zeros((bfv_degree, eval_degree));
 
         InnerBox {
+            coefficients_data: Array2::zeros((0, 0)),
             item_data,
             label_data,
             ht_rows: hash_table_rows,
             lane_span,
             initialised: false,
+            eval_degree,
+            psi_pt: psi_pt.clone(),
         }
     }
 
@@ -112,6 +118,27 @@ impl InnerBox {
     fn rows(lane_span: usize, bfv_degree: usize) -> usize {
         bfv_degree / lane_span
     }
+
+    /// Iterates through all rows and generates coefficients
+    ///
+    /// TODO: Avoid rows that haven't been touched
+    fn generate_coefficients(&mut self) {
+        let shape = self.item_data.shape();
+        self.coefficients_data = Array2::<u32>::zeros((shape[0], shape[1]));
+        izip!(
+            self.coefficients_data.outer_iter_mut(),
+            self.item_data.outer_iter(),
+            self.label_data.outer_iter()
+        )
+        .for_each(|(mut coeffs, item, label)| {
+            let c = newton_interpolate(
+                item.as_slice().unwrap(),
+                label.as_slice().unwrap(),
+                self.psi_pt.bfv_pt as u32,
+            );
+            coeffs.as_slice_mut().unwrap().copy_from_slice(&c);
+        });
+    }
 }
 
 /// Contains `hash_table_size / bfv_degree` InnerBoxes stacked on top of of each other.
@@ -120,7 +147,6 @@ struct BigBox {
     inner_boxes: Vec<Vec<InnerBox>>,
     hash_table_size: usize,
     bfv_degree: usize,
-    lane_span: usize,
     eval_degree: usize,
     /// rows in single inner box
     inner_box_rows: usize,
@@ -131,25 +157,23 @@ impl BigBox {
     fn new(
         hash_table_size: usize,
         bfv_degree: usize,
-        lane_span: usize,
         eval_degree: usize,
         psi_pt: &PsiPlaintext,
     ) -> BigBox {
         // rows in single inner box
-        let inner_box_rows = InnerBox::rows(lane_span, bfv_degree);
+        let inner_box_rows = InnerBox::rows(psi_pt.lane_span(), bfv_degree);
 
         let stack_rows = hash_table_size / inner_box_rows;
         let mut inner_boxes = vec![];
         // setup inner boxes for stack rows
-        (0..stack_rows).into_iter().for_each(|_| {
-            inner_boxes.push(vec![InnerBox::new(lane_span, bfv_degree, eval_degree)])
-        });
+        (0..stack_rows)
+            .into_iter()
+            .for_each(|_| inner_boxes.push(vec![InnerBox::new(psi_pt, bfv_degree, eval_degree)]));
 
         BigBox {
             inner_boxes,
             hash_table_size,
             bfv_degree,
-            lane_span,
             eval_degree,
             inner_box_rows,
             psi_pt: psi_pt.clone(),
@@ -183,7 +207,7 @@ impl BigBox {
                 .insert_item_label(inner_box_index, item_label, &self.psi_pt);
         } else {
             // create new inner box at stack_row and inset
-            let mut inner_box = InnerBox::new(self.lane_span, self.bfv_degree, self.eval_degree);
+            let mut inner_box = InnerBox::new(&self.psi_pt, self.bfv_degree, self.eval_degree);
 
             inner_box.insert_item_label(inner_box_index, item_label, &self.psi_pt);
 

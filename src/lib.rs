@@ -51,17 +51,27 @@ impl ItemLabel {
         let mask = (1 << bits) - 1;
 
         (
-            self.item() >> (chunk_index as u32 * bits) & mask,
-            self.label() >> (chunk_index as u32 * bits) & mask,
+            self.item() >> (chunk_index * bits) & mask,
+            self.label() >> (chunk_index * bits) & mask,
         )
     }
 }
 
 #[derive(Clone)]
-struct PsiPlaintext(u64, u64);
+struct PsiPlaintext {
+    psi_pt_bits: usize,
+    bfv_bt_bits: usize,
+    psi_pt: usize,
+    bfv_pt: usize,
+}
+
 impl PsiPlaintext {
-    fn chunk_bits(&self) -> u32 {
-        64 - self.1.leading_zeros() - 1
+    fn lane_span(&self) -> usize {
+        (self.psi_pt_bits + self.bfv_bt_bits) / self.bfv_bt_bits
+    }
+
+    fn chunk_bits(&self) -> usize {
+        self.psi_pt_bits
     }
 }
 

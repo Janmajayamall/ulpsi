@@ -33,7 +33,7 @@ fn divided_matrix(x: &[u32], y: &[u32], modq: u32) -> Vec<Vec<u32>> {
     // construct divided difference matrix
     let mut ddiff = Vec::with_capacity(degree + 1);
     // We don't need an exact matrix since only upper triangle will hold values
-    for i in (0..(degree + 1)).rev() {
+    for i in (1..(degree + 1 + 1)).rev() {
         ddiff.push(Vec::with_capacity(i));
     }
     for col in 0..(degree + 1) {
@@ -60,19 +60,28 @@ fn divided_matrix(x: &[u32], y: &[u32], modq: u32) -> Vec<Vec<u32>> {
     ddiff
 }
 
-fn newton_interpolate(x: &[u32], y: &[u32], modq: u32) {
+pub fn newton_interpolate(x: &[u32], y: &[u32], modq: u32) -> Vec<u32> {
     assert!(x.len() == y.len());
     let divided_matrix = divided_matrix(x, y, modq);
 
     let degree = x.len() - 1;
 
-    // extract a's
-    // let mut a_values = vec![]
-    for i in 0..(degree + 1) {
-        // a_values.push(value)
+    let modq = Modulus::new(modq as u64);
+
+    // apply horner's rule to construct coefficients
+    let mut coefficients = vec![0u32];
+    for i in (1..(degree + 1)).rev() {
+        let a_i = divided_matrix[0][i];
+        coefficients[0] = modq.add_mod_fast(coefficients[0] as u64, a_i as u64) as u32;
+
+        // (c_i(x^i) + ... + a_i) * (x - x_{i-1})
+        poly_mul_monomial(&mut coefficients, x[i - 1], &modq);
     }
 
-    let modq = Modulus::new(modq as u64);
+    // handle a_0
+    coefficients[0] = modq.add_mod_fast(coefficients[0] as u64, divided_matrix[0][0] as u64) as u32;
+
+    coefficients
 }
 
 #[cfg(test)]
@@ -95,5 +104,13 @@ mod tests {
         poly_mul_monomial(&mut x, 3, &modq);
 
         dbg!(x);
+    }
+
+    #[test]
+    fn newton_interpolate_works() {
+        let x = vec![1, 4, 2, 4, 2, 4, 56, 6];
+        let y: Vec<u32> = vec![1, 4, 2, 4, 2, 4, 56, 6];
+        let matrix = newton_interpolate(&x, &y, 65537);
+        println!("{:?}", matrix);
     }
 }
