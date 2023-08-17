@@ -10,3 +10,4 @@ bfv = {path = "./../bfv/bfv"}
 rand = "0.8.5"
 itertools = "0.10.5"
 rand_chacha = "0.3.1"
+ndarray = "0.15.6"

@@ -1,13 +1,15 @@
 use std::{collections::HashMap, hash::Hash};
 
 use bfv::{
-    BfvParameters, Ciphertext, Encoding, EvaluationKey, Evaluator, PolyCache, PolyType,
+    BfvParameters, Ciphertext, Encoding, EvaluationKey, Evaluator, Plaintext, PolyCache, PolyType,
     Representation, SecretKey,
 };
 use rand::thread_rng;
 use rand_chacha::rand_core::le;
 use utils::{decrypt_and_print, rtg_indices_and_levels};
 
+mod data;
+mod poly_interpolate;
 mod utils;
 
 struct PsiParams {
@@ -30,24 +32,36 @@ impl PsiParams {
     }
 }
 
+/// Warning: We assume that bits in both label and item are equal.
 struct ItemLabel(u32, u32);
-
-struct PsiPlaintext(u64);
-impl PsiPlaintext {
-    fn bit_space(&self) -> u32 {
-        64 - self.0.leading_zeros() - 1
-    }
-}
-
 impl ItemLabel {
+    pub fn item(&self) -> u32 {
+        self.0
+    }
+
     pub fn label(&self) -> u32 {
         self.1
     }
 
-    /// label is assumed to be divided in chunks with each chunk having
-    /// plaintext space bits. Function returns chunk at index
-    pub fn bit_chunk(&self, index: usize, psi_pt: &PsiPlaintext) -> u32 {
-        todo!()
+    /// `item` is greater
+    ///
+    /// TODO: Switch this to an iterator
+    pub fn get_chunk_at_index(&self, chunk_index: usize, psi_pt: &PsiPlaintext) -> (u32, u32) {
+        let bits = psi_pt.chunk_bits();
+        let mask = (1 << bits) - 1;
+
+        (
+            self.item() >> (chunk_index as u32 * bits) & mask,
+            self.label() >> (chunk_index as u32 * bits) & mask,
+        )
+    }
+}
+
+#[derive(Clone)]
+struct PsiPlaintext(u64, u64);
+impl PsiPlaintext {
+    fn chunk_bits(&self) -> u32 {
+        64 - self.1.leading_zeros() - 1
     }
 }
 
