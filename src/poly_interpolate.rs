@@ -111,6 +111,7 @@ mod tests {
         let x = vec![1, 4, 2, 4, 2, 4, 56, 6];
         let y: Vec<u32> = vec![1, 4, 2, 4, 2, 4, 56, 6];
         let matrix = newton_interpolate(&x, &y, 65537);
+        //TODO: write tests using numpy interpolation
         println!("{:?}", matrix);
     }
 }
