@@ -4,6 +4,9 @@ use bfv::{
     BfvParameters, Ciphertext, Encoding, EvaluationKey, Evaluator, Plaintext, PolyCache, PolyType,
     Representation, SecretKey,
 };
+use data::{BigBox, CiphertextSlots, EvalPolyDegree, HashTableSize, ItemLabel};
+use hash::Cuckoo;
+use itertools::{izip, Itertools};
 use rand::thread_rng;
 use rand_chacha::rand_core::le;
 use utils::{decrypt_and_print, rtg_indices_and_levels};
@@ -12,106 +15,6 @@ mod data;
 mod hash;
 mod poly_interpolate;
 mod utils;
-
-struct PsiParams {
-    item_size: usize,
-    label_size: usize,
-    /// Max. no. of items stores at server
-    server_item_count: usize,
-    /// Max. no. of items client can request at once
-    client_item_count: usize,
-
-    // BFV params
-    bfv_degree: usize,
-    plaintext_bits: usize,
-}
-
-impl PsiParams {
-    /// No. of lanes that a single item occupies
-    fn lanes_per_item(&self) -> usize {
-        (self.item_size + self.plaintext_bits) / self.plaintext_bits
-    }
-}
-
-/// Warning: We assume that bits in both label and item are equal.
-struct ItemLabel(u32, u32);
-impl ItemLabel {
-    pub fn item(&self) -> u32 {
-        self.0
-    }
-
-    pub fn label(&self) -> u32 {
-        self.1
-    }
-
-    /// `item` is greater
-    ///
-    /// TODO: Switch this to an iterator
-    pub fn get_chunk_at_index(&self, chunk_index: usize, psi_pt: &PsiPlaintext) -> (u32, u32) {
-        let bits = psi_pt.chunk_bits();
-        let mask = (1 << bits) - 1;
-
-        (
-            self.item() >> (chunk_index * bits) & mask,
-            self.label() >> (chunk_index * bits) & mask,
-        )
-    }
-}
-
-#[derive(Clone)]
-struct PsiPlaintext {
-    psi_pt_bits: usize,
-    bfv_bt_bits: usize,
-    psi_pt: usize,
-    bfv_pt: usize,
-}
-
-impl PsiPlaintext {
-    fn lane_span(&self) -> usize {
-        (self.psi_pt_bits + self.bfv_bt_bits) / self.bfv_bt_bits
-    }
-
-    fn chunk_bits(&self) -> usize {
-        self.psi_pt_bits
-    }
-}
-
-struct PolyCoefficientsCache {
-    coefficients_2d: Vec<u32>,
-    label_size: usize,
-    psi_plaintext: PsiPlaintext,
-}
-
-impl PolyCoefficientsCache {
-    // constructs polynomials with degree len(iterm_labels). Divdes each label in
-    // `label_size/plaintext_bit_space` parts and interpolates a polynomial for each.
-    pub fn new(item_labels: &[ItemLabel], psi_plaintext: &PsiPlaintext) -> PolyCoefficientsCache {
-        todo!()
-    }
-}
-
-struct Db {
-    data: HashMap<u32, Vec<ItemLabel>>,
-    hash_table_size: u32,
-    lane_per_item: u32,
-    poly_coeff_cache: HashMap<u32, Vec<PolyCoefficientsCache>>,
-}
-
-impl Db {
-    fn insert(&mut self, item_label: ItemLabel) {
-        //TODO use the hash function to hash
-        let item_hash = 0 % self.hash_table_size;
-
-        if self.data.contains_key(&item_hash) {
-            self.data.get_mut(&item_hash).unwrap().push(item_label);
-        } else {
-            let values = vec![item_label];
-            self.data.insert(item_hash, values);
-        }
-    }
-
-    fn iterpolate(&self) {}
-}
 
 struct Server {
     raw_label_data: Vec<u32>,

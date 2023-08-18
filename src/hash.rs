@@ -2,7 +2,7 @@ use itertools::Itertools;
 use ring::digest::{self, Digest};
 use std::collections::HashMap;
 
-fn sha256(item: u32) -> Digest {
+fn sha256(item: u128) -> Digest {
     digest::digest(&digest::SHA256, &item.to_le_bytes())
 }
 
@@ -11,7 +11,7 @@ pub struct Cuckoo {
     table_size: u32,
 }
 impl Cuckoo {
-    fn new(no_of_tables: u8, table_size: u32) -> Cuckoo {
+    pub fn new(no_of_tables: u8, table_size: u32) -> Cuckoo {
         // Cannot allow greater than 8 hash tables since the way hashing is implementated limits to 8 hash outputs at max.
         assert!(no_of_tables <= 8);
         Cuckoo {
@@ -21,7 +21,7 @@ impl Cuckoo {
     }
 
     /// Hashes the data and return indices in each hash table
-    fn table_indices(&self, data: u32) -> Vec<u32> {
+    pub fn table_indices(&self, data: u128) -> Vec<u32> {
         let digest = sha256(data);
 
         // We divide the digest in chunks of 32 bits and view each chunk as ouput from different hash functions
@@ -43,9 +43,9 @@ impl Cuckoo {
 }
 
 #[derive(Clone, Debug)]
-pub struct HashTableEntry(u32, u8);
+pub struct HashTableEntry(u128, u8);
 impl HashTableEntry {
-    pub fn entry_value(&self) -> u32 {
+    pub fn entry_value(&self) -> u128 {
         self.0
     }
 
@@ -66,8 +66,12 @@ pub fn construct_hash_tables(input: &[HashTableEntry], cuckoo: &Cuckoo) {
 
     let mut stack = vec![];
 
-    while curr_element.is_some() {
-        let data = curr_element.unwrap();
+    while curr_index < input.len() {
+        if curr_element.is_none() {
+            curr_element = Some(input[curr_index].clone());
+        }
+
+        let data = curr_element.clone().unwrap();
         let indices = cuckoo.table_indices(data.entry_value());
 
         let old_value = hash_tables[data.hash_index()].insert(indices[data.hash_index()], data);
@@ -78,15 +82,14 @@ pub fn construct_hash_tables(input: &[HashTableEntry], cuckoo: &Cuckoo) {
 
             if v.hash_index() == cuckoo.no_of_tables as usize {
                 stack.push(v);
-
                 curr_index += 1;
-                curr_element = Some(input[curr_index].clone());
+                curr_element = None;
             } else {
                 curr_element = Some(v);
             }
         } else {
             curr_index += 1;
-            curr_element = Some(input[curr_index].clone());
+            curr_element = None;
         }
     }
     dbg!(stack.len());
@@ -109,10 +112,14 @@ mod tests {
 
         let hasher = Cuckoo::new(no_of_hash_tables as u8, table_size);
 
+        // let indices = hasher.table_indices(rng.gen());
+
         let mut queue = vec![];
         for i in 0..3500 {
-            let data: u32 = rng.gen();
+            let data: u128 = rng.gen();
             queue.push(HashTableEntry(data, 0));
         }
+
+        construct_hash_tables(&queue, &hasher);
     }
 }
