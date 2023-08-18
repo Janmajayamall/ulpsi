@@ -9,6 +9,7 @@ use rand_chacha::rand_core::le;
 use utils::{decrypt_and_print, rtg_indices_and_levels};
 
 mod data;
+mod hash;
 mod poly_interpolate;
 mod utils;
 
