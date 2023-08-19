@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-
-use crate::server::PSParams;
+use crate::server::paterson_stockmeyer::PSParams;
 use bfv::{
     BfvParameters, Ciphertext, Encoding, EvaluationKey, Evaluator, Plaintext, PolyCache, PolyType,
     Representation, SecretKey,
@@ -8,6 +6,7 @@ use bfv::{
 use itertools::izip;
 use rand::thread_rng;
 use rand_chacha::rand_core::le;
+use std::collections::HashMap;
 use traits::TryEncodingWithParameters;
 
 pub fn rtg_indices_and_levels(degree: usize) -> (Vec<isize>, Vec<usize>) {
