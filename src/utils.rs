@@ -1,11 +1,14 @@
 use std::collections::HashMap;
 
+use crate::server::PSParams;
 use bfv::{
     BfvParameters, Ciphertext, Encoding, EvaluationKey, Evaluator, Plaintext, PolyCache, PolyType,
     Representation, SecretKey,
 };
+use itertools::izip;
 use rand::thread_rng;
 use rand_chacha::rand_core::le;
+use traits::TryEncodingWithParameters;
 
 pub fn rtg_indices_and_levels(degree: usize) -> (Vec<isize>, Vec<usize>) {
     let mut rtg_levels = vec![];
@@ -45,14 +48,14 @@ pub fn decrypt_and_print(
     println!("{tag} - Noise: {noise}; m[{m_start}..{m_end}]: {:?}", m);
 }
 
-struct Node {
+pub struct Node {
     target: usize,
     depth: usize,
     s1: usize,
     s2: usize,
 }
 
-pub fn construct_dag(source_powers: &[usize], target_powers: &[usize]) {
+pub fn construct_dag(source_powers: &[usize], target_powers: &[usize]) -> HashMap<usize, Node> {
     let mut dag = HashMap::<usize, Node>::new();
     let mut max_depth = 0;
 
@@ -114,28 +117,137 @@ pub fn construct_dag(source_powers: &[usize], target_powers: &[usize]) {
     }
 
     dbg!(max_depth);
+
+    dag
+}
+
+pub fn calculate_ps_powers_with_dag(
+    evaluator: &Evaluator,
+    ek: &EvaluationKey,
+    source_cts: &[Ciphertext],
+    source_powers: &[usize],
+    target_powers: &[usize],
+    dag: HashMap<usize, Node>,
+    ps_params: &PSParams,
+) -> HashMap<usize, Ciphertext> {
+    let mut target_powers_cts = HashMap::new();
+
+    // insert all source powers
+    izip!(source_powers.iter(), source_cts.iter()).for_each(|(p, ct)| {
+        target_powers_cts.insert(*p, ct.clone());
+    });
+
+    // calculate target powers from the respective source powers
+    target_powers.iter().for_each(|p| {
+        if !target_powers_cts.contains_key(p) {
+            let node = dag.get(&p).unwrap();
+
+            let op1 = target_powers_cts.get(&node.s1).expect("Source 1 missing");
+            let op2 = target_powers_cts.get(&node.s2).expect("Source 2 missing");
+            let mut power_ct = evaluator.mul(op1, op2);
+            power_ct = evaluator.relinearize(&power_ct, ek);
+            // insert target power
+            target_powers_cts.insert(*p, power_ct);
+        }
+    });
+
+    // convert all powers <= low_degree to `Evaluation` for efficient plaintext multiplication
+    for i in 0..ps_params.low_degree() {
+        let power = i + 1;
+
+        match target_powers_cts.get_mut(&power) {
+            Some(ct) => {
+                evaluator.ciphertext_change_representation(ct, Representation::Evaluation);
+            }
+            _ => {}
+        }
+    }
+
+    target_powers_cts
+}
+
+pub fn bfv_setup_test() -> (Evaluator, SecretKey) {
+    let mut rng = thread_rng();
+    let params = BfvParameters::default(4, 1 << 13);
+    let sk = SecretKey::random_with_params(&params, &mut rng);
+
+    (Evaluator::new(params), sk)
 }
 
 #[cfg(test)]
 mod tests {
+    use itertools::Itertools;
+
+    use crate::client::calculate_source_powers;
+
     use super::*;
 
     #[test]
     fn dag() {
         let source_powers = vec![1, 3, 11, 18, 45, 225];
-        let target_degree = 1305;
+        let target_degree = 1304;
         let ps_low_deg = 44;
-        let mut target_powers = vec![];
-        for i in 1..(ps_low_deg + 1) {
-            target_powers.push(i);
-        }
+        let ps_params = PSParams::new(ps_low_deg, target_degree);
+        construct_dag(&source_powers, ps_params.powers());
+    }
 
-        let mut high_degree_start = ps_low_deg + 1;
-        let high_degree_end = (target_degree / high_degree_start) * high_degree_start;
-        while high_degree_start <= high_degree_end {
-            target_powers.push(high_degree_start);
-            high_degree_start += ps_low_deg + 1;
-        }
-        construct_dag(&source_powers, &target_powers);
+    #[test]
+    fn calculate_ps_powers_with_dag_works() {
+        let source_powers = vec![1, 3, 11, 18, 45, 225];
+        let target_degree = 1304;
+        let ps_low_deg = 44;
+        let ps_params = PSParams::new(ps_low_deg, target_degree);
+        let dag = construct_dag(&source_powers, ps_params.powers());
+
+        let mut rng = thread_rng();
+        let (evaluator, sk) = bfv_setup_test();
+        let ek = EvaluationKey::new(evaluator.params(), &sk, &[0], &[], &[], &mut rng);
+
+        // we stick with a single input value spanned across all rows
+        let input_value = 5;
+        let input_vec = vec![input_value; evaluator.params().degree];
+        let input_source_powers = calculate_source_powers(
+            &input_vec,
+            &source_powers,
+            evaluator.params().plaintext_modulus as u32,
+        );
+
+        let input_source_powers_cts = input_source_powers
+            .iter()
+            .map(|i| {
+                let pt = Plaintext::try_encoding_with_parameters(
+                    i,
+                    evaluator.params(),
+                    Encoding::simd(0, PolyCache::None),
+                );
+                evaluator.encrypt(&sk, &pt, &mut rng)
+            })
+            .collect_vec();
+
+        let target_power_cts = calculate_ps_powers_with_dag(
+            &evaluator,
+            &ek,
+            &input_source_powers_cts,
+            &source_powers,
+            ps_params.powers(),
+            dag,
+            &ps_params,
+        );
+
+        // check all target powers are correct
+        ps_params.powers().iter().for_each(|power| {
+            let power_ct = target_power_cts.get(power).unwrap();
+            // dbg!(evaluator.measure_noise(&sk, &power_ct));
+            let m =
+                evaluator.plaintext_decode(&evaluator.decrypt(&sk, power_ct), Encoding::default());
+
+            // calculate expected target power of input_value
+            let expected_m = evaluator
+                .params()
+                .plaintext_modulus_op
+                .exp(input_value as u64, *power);
+
+            assert_eq!(m, vec![expected_m; evaluator.params().degree]);
+        })
     }
 }

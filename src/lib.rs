@@ -4,16 +4,17 @@ use bfv::{
     BfvParameters, Ciphertext, Encoding, EvaluationKey, Evaluator, Plaintext, PolyCache, PolyType,
     Representation, SecretKey,
 };
-use data::{BigBox, CiphertextSlots, EvalPolyDegree, HashTableSize, ItemLabel};
 use hash::Cuckoo;
 use itertools::{izip, Itertools};
 use rand::thread_rng;
 use rand_chacha::rand_core::le;
+use server::{BigBox, CiphertextSlots, EvalPolyDegree, HashTableSize, ItemLabel};
 use utils::{decrypt_and_print, rtg_indices_and_levels};
 
-mod data;
+mod client;
 mod hash;
 mod poly_interpolate;
+mod server;
 mod utils;
 
 struct Server {
