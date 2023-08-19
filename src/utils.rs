@@ -216,7 +216,7 @@ mod tests {
             .iter()
             .map(|i| {
                 let pt = Plaintext::try_encoding_with_parameters(
-                    i,
+                    i.as_slice(),
                     evaluator.params(),
                     Encoding::simd(0, PolyCache::None),
                 );
