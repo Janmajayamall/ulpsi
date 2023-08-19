@@ -1,7 +1,7 @@
 use crate::{hash::Cuckoo, poly_interpolate::newton_interpolate};
 use itertools::{izip, Itertools};
 use ndarray::Array2;
-use std::ops::Deref;
+use std::{collections::HashSet, ops::Deref};
 
 /// No. of rows on a hash table
 #[derive(Clone, Debug)]
@@ -125,6 +125,7 @@ pub struct InnerBox {
     /// Is set to initialised when a new item is added
     initialised: bool,
     psi_pt: PsiPlaintext,
+    item_data_hash_set: HashSet<(usize, u32)>,
 }
 
 impl InnerBox {
@@ -160,12 +161,34 @@ impl InnerBox {
             ht_rows,
             initialised: false,
             psi_pt: psi_pt.clone(),
+            item_data_hash_set: HashSet::new(),
         }
     }
 
-    /// Returns whether there's space to insert an ItemLabel in row at `index`.
-    fn can_insert(&self, index: usize) -> bool {
-        self.ht_rows[index].is_free()
+    /// Checks whether ItemLabel can be inserted in row at `index`.
+    ///
+    /// To insert, two conditions must be met
+    /// (1) InnerBoxRow as index `row` must have an empty column.
+    /// (2) Chunks of `item` in `ItemLabel` must not collide with existing entries in their respective real rows.
+    fn can_insert(&self, item_label: &ItemLabel, row: usize) -> bool {
+        if !self.ht_rows[row].is_free() {
+            return false;
+        }
+
+        // check that none of the chunks of ItemLabel's `item` collide with existing chunks in respective real rows.
+        let real_row = row * self.psi_pt.slots_required() as usize;
+        let mut can_insert = true;
+        for i in real_row..real_row + self.psi_pt.slots_required() as usize {
+            let (item_chunk, _) =
+                item_label.get_chunk_at_index((i - real_row) as u32, &self.psi_pt);
+
+            if self.item_data_hash_set.contains(&(i, item_chunk)) {
+                println!("[IB] Found chunk collision for ItemLabel. item: {}, chunk: {}, ib_row: {row}, real_row:{i}", item_label.item(), item_chunk);
+                can_insert = false;
+                break;
+            }
+        }
+        can_insert
     }
 
     /// Insert item label at row
@@ -189,6 +212,10 @@ impl InnerBox {
             *entry = item_chunk;
             let entry = self.label_data.get_mut((i, col)).unwrap();
             *entry = label_chunk;
+
+            // add `item_chunk` as entry to item_data_hash_set for corresponding real row.
+            // This is to check for collisions later.
+            self.item_data_hash_set.insert((i, item_chunk));
         }
 
         // increase columns occupancy by 1
@@ -207,13 +234,13 @@ impl InnerBox {
     fn generate_coefficients(&mut self) {
         println!(
             "
-            [IB] Generating Coefficients
-                    InnerBoxRows: {},
-                    No. of polynomials to interpolate: {} each with degree: {},
-        ",
+            ########
+            [IB] Generating Coefficients for IB with InnerBoxRows: {},
+            No. of polynomial to interpolate: {}
+
+            ",
             self.ht_rows.len(),
-            self.item_data.shape()[0],
-            self.item_data.shape()[1]
+            self.item_data.shape()[0]
         );
         let shape = self.item_data.shape();
         self.coefficients_data = Array2::<u32>::zeros((shape[0], shape[1]));
@@ -222,14 +249,30 @@ impl InnerBox {
             self.item_data.outer_iter(),
             self.label_data.outer_iter()
         )
-        .for_each(|(mut coeffs, item, label)| {
+        .enumerate()
+        .for_each(|(index, (mut coeffs, item, label))| {
+            // map real row to InnerBoxRow index
+            let ibr_index = index / self.psi_pt.slots_required() as usize;
+
+            // limit polynomial interpolation to maximum columns occupied
+            let cols_occupied = self.ht_rows[ibr_index].curr_cols as usize;
+
+            println!("[IB] Interpolating polynomial of degree {cols_occupied}");
+
             let c = newton_interpolate(
-                item.as_slice().unwrap(),
-                label.as_slice().unwrap(),
+                &item.as_slice().unwrap()[..cols_occupied],
+                &label.as_slice().unwrap()[..cols_occupied],
                 self.psi_pt.bfv_pt as u32,
             );
-            coeffs.as_slice_mut().unwrap().copy_from_slice(&c);
+            coeffs.as_slice_mut().unwrap()[..cols_occupied].copy_from_slice(&c);
         });
+
+        println!(
+            "
+            End generating coefficients
+            ########
+            ",
+        )
     }
 }
 
@@ -302,7 +345,7 @@ impl BigBox {
         // Find the first InnerBox in segment that has free space at row
         let mut inner_box_index = None;
         for i in 0..self.inner_boxes[segment_index].len() {
-            if self.inner_boxes[segment_index][i].can_insert(inner_box_row) {
+            if self.inner_boxes[segment_index][i].can_insert(item_label, inner_box_row) {
                 inner_box_index = Some(i);
                 break;
             }
@@ -352,6 +395,7 @@ impl BigBox {
 struct Db {
     cuckoo: Cuckoo,
     big_boxes: Vec<BigBox>,
+    item_set_cache: HashSet<u128>,
 }
 
 impl Db {
@@ -368,10 +412,19 @@ impl Db {
             .map(|i| BigBox::new(ht_size, ct_slots, eval_degree, psi_pt))
             .collect_vec();
 
-        Db { cuckoo, big_boxes }
+        Db {
+            cuckoo,
+            big_boxes,
+            item_set_cache: HashSet::new(),
+        }
     }
 
-    pub fn insert(&mut self, item: u128, label: u128) {
+    pub fn insert(&mut self, item: u128, label: u128) -> bool {
+        // It's Private SET intersection. You cannot insert same item twice!
+        if self.item_set_cache.contains(&item) {
+            return false;
+        }
+
         // get index for item for all hash tables
         let indices = self.cuckoo.table_indices(item);
 
@@ -379,11 +432,19 @@ impl Db {
         // insert item at index corresponding to hash table
         izip!(self.big_boxes.iter_mut(), indices.iter()).for_each(|(big_box, ht_index)| {
             big_box.insert(&item_label, *ht_index as usize);
-        })
+        });
+
+        self.item_set_cache.insert(item);
+
+        true
     }
 
     pub fn preprocess(&mut self) {
         self.big_boxes.iter_mut().for_each(|bb| bb.preprocess());
+    }
+
+    pub fn db_size(&self) -> usize {
+        self.item_set_cache.len()
     }
 }
 
@@ -396,10 +457,10 @@ mod tests {
     #[test]
     fn db_works() {
         let ht_size = HashTableSize(4096);
-        let ct_slots = CiphertextSlots(8192);
-        let eval_degree = EvalPolyDegree(2000);
-        let psi_pt = PsiPlaintext::new(128, 16, 65537);
-        let mut db = Db::new(3, &ht_size, &ct_slots, &eval_degree, &psi_pt);
+        let ct_slots = CiphertextSlots(4096);
+        let eval_degree = EvalPolyDegree(10);
+        let psi_pt = PsiPlaintext::new(16, 16, 65537);
+        let mut db = Db::new(1, &ht_size, &ct_slots, &eval_degree, &psi_pt);
 
         println!(
             "
@@ -409,7 +470,7 @@ mod tests {
         );
 
         let mut rng = thread_rng();
-        for i in 0..10 {
+        while db.db_size() != 1000 {
             let item: u128 = rng.gen();
             let label: u128 = rng.gen();
 

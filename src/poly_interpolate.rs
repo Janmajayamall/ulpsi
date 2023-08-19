@@ -1,3 +1,5 @@
+use std::thread::panicking;
+
 use bfv::Modulus;
 
 /// Multiplies a polynomial with a monomial and returns the product.
@@ -48,7 +50,12 @@ fn divided_matrix(x: &[u32], y: &[u32], modq: u32) -> Vec<Vec<u32>> {
                 let y0 = ddiff[row][col - 1] as u64;
 
                 let y1_y0 = modq.sub_mod_fast(y1, y0);
-                let x1_x0_inv = modq.inv(modq.sub_mod_fast(x[row + col] as u64, x[row] as u64));
+
+                let x_1_x0 = modq.sub_mod_fast(x[row + col] as u64, x[row] as u64);
+                if x_1_x0 == 0 {
+                    panic!("Repeated x values with different y values");
+                }
+                let x1_x0_inv = modq.inv(x_1_x0);
 
                 // (y[k,...,a] - y[k-1,...,b])/(x_k - x_b)
                 let v = modq.mul_mod_fast(y1_y0, x1_x0_inv) as u32;
@@ -61,6 +68,10 @@ fn divided_matrix(x: &[u32], y: &[u32], modq: u32) -> Vec<Vec<u32>> {
 }
 
 pub fn newton_interpolate(x: &[u32], y: &[u32], modq: u32) -> Vec<u32> {
+    if x.len() == 0 {
+        return vec![];
+    }
+
     assert!(x.len() == y.len());
     let divided_matrix = divided_matrix(x, y, modq);
 
@@ -84,8 +95,21 @@ pub fn newton_interpolate(x: &[u32], y: &[u32], modq: u32) -> Vec<u32> {
     coefficients
 }
 
+pub fn evaluate_poly(x: u32, coeffs: &[u32], modq: u32) -> u32 {
+    let modq = Modulus::new(modq as u64);
+    let mut y = 0;
+    let mut x_power = 1;
+    coeffs.iter().for_each(|c| {
+        y = modq.add_mod_fast(y as u64, modq.mul_mod_fast(*c as u64, x_power as u64)) as u32;
+        x_power = modq.mul_mod_fast(x_power as u64, x as u64);
+    });
+    y
+}
+
 #[cfg(test)]
 mod tests {
+    use rand::{thread_rng, Rng};
+
     use super::*;
 
     #[test]
@@ -108,10 +132,27 @@ mod tests {
 
     #[test]
     fn newton_interpolate_works() {
-        let x = vec![1, 4, 2, 4, 2, 4, 56, 6];
-        let y: Vec<u32> = vec![1, 4, 2, 4, 2, 4, 56, 6];
-        let matrix = newton_interpolate(&x, &y, 65537);
-        //TODO: write tests using numpy interpolation
-        println!("{:?}", matrix);
+        let mut rng = thread_rng();
+        let degree = 1300;
+        let modq = 65537;
+        for _ in 0..10 {
+            let mut x = vec![];
+            let mut y: Vec<u32> = vec![];
+
+            while x.len() != degree {
+                let tmp_x = rng.gen::<u32>() % modq;
+                if !x.contains(&tmp_x) {
+                    x.push(tmp_x);
+                    y.push(rng.gen::<u32>() % modq);
+                }
+            }
+
+            let coeffs = newton_interpolate(&x, &y, modq);
+
+            for i in 0..degree {
+                let y_res = evaluate_poly(x[i], &coeffs, modq);
+                assert_eq!(y_res, y[i]);
+            }
+        }
     }
 }
