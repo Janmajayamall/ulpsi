@@ -1,4 +1,6 @@
-use super::InnerBox;
+use crate::PsiParams;
+
+use super::{EvalPolyDegree, InnerBox};
 use bfv::{Ciphertext, Encoding, EvaluationKey, Evaluator, Plaintext, Representation};
 use itertools::{izip, Itertools};
 use ndarray::Array2;
@@ -8,6 +10,7 @@ use std::{
 };
 use traits::TryEncodingWithParameters;
 
+#[derive(Clone, Debug)]
 pub struct PSParams {
     low_degree: usize,
     total_degree: usize,
@@ -38,6 +41,10 @@ impl PSParams {
 
     pub fn powers(&self) -> &[usize] {
         &self.powers
+    }
+
+    pub fn eval_degree(&self) -> EvalPolyDegree {
+        EvalPolyDegree(self.total_degree as u32)
     }
 }
 
@@ -76,13 +83,12 @@ pub fn ps_evaluate_poly(
                 Encoding::simd(level, bfv::PolyCache::Mul(bfv::PolyType::Q)),
             );
 
+            let op1 = x_powers.get(&k).unwrap();
+
             if k == 1 {
-                inner_sum = evalutor.mul_plaintext(x_powers.get(&k).unwrap(), &pt);
+                inner_sum = evalutor.mul_plaintext(op1, &pt);
             } else {
-                evalutor.add_assign(
-                    &mut inner_sum,
-                    &evalutor.mul_plaintext(x_powers.get(&k).unwrap(), &pt),
-                );
+                evalutor.add_assign(&mut inner_sum, &evalutor.mul_plaintext(op1, &pt));
             }
         }
 
@@ -151,11 +157,11 @@ mod tests {
 
         // Interpolate a polynomial
         let mut rng = thread_rng();
-        let poly_degree = ps_params.total_degree + 1;
+        let data_points_count = ps_params.total_degree + 1;
         let mut x = vec![];
         let mut y: Vec<u32> = vec![];
 
-        while x.len() != poly_degree {
+        while x.len() != data_points_count {
             let tmp_x = rng.gen::<u32>() % modq;
             if !x.contains(&tmp_x) {
                 x.push(tmp_x);
@@ -165,7 +171,7 @@ mod tests {
         let coeffs = newton_interpolate(&x, &y, modq);
 
         // turns coefficients into 2D array just like InnerBox
-        let mut coefficients_2d = Array2::zeros((evaluator.params().degree, poly_degree));
+        let mut coefficients_2d = Array2::zeros((evaluator.params().degree, data_points_count));
         coefficients_2d
             .row_mut(0)
             .as_slice_mut()
@@ -203,7 +209,7 @@ mod tests {
             &input_source_powers_cts,
             &source_powers,
             ps_params.powers(),
-            dag,
+            &dag,
             &ps_params,
         );
 

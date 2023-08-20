@@ -126,7 +126,7 @@ pub fn calculate_ps_powers_with_dag(
     source_cts: &[Ciphertext],
     source_powers: &[usize],
     target_powers: &[usize],
-    dag: HashMap<usize, Node>,
+    dag: &HashMap<usize, Node>,
     ps_params: &PSParams,
 ) -> HashMap<usize, Ciphertext> {
     let mut target_powers_cts = HashMap::new();
@@ -167,7 +167,7 @@ pub fn calculate_ps_powers_with_dag(
 
 pub fn bfv_setup_test() -> (Evaluator, SecretKey) {
     let mut rng = thread_rng();
-    let params = BfvParameters::default(4, 1 << 13);
+    let params = BfvParameters::default(3, 1 << 13);
     let sk = SecretKey::random_with_params(&params, &mut rng);
 
     (Evaluator::new(params), sk)
@@ -229,7 +229,7 @@ mod tests {
             &input_source_powers_cts,
             &source_powers,
             ps_params.powers(),
-            dag,
+            &dag,
             &ps_params,
         );
 

@@ -45,6 +45,10 @@ impl Cuckoo {
 #[derive(Clone, Debug)]
 pub struct HashTableEntry(u128, u8);
 impl HashTableEntry {
+    pub fn new(value: u128) -> HashTableEntry {
+        HashTableEntry(value, 0)
+    }
+
     pub fn entry_value(&self) -> u128 {
         self.0
     }
@@ -58,7 +62,10 @@ impl HashTableEntry {
     }
 }
 
-pub fn construct_hash_tables(input: &[HashTableEntry], cuckoo: &Cuckoo) {
+pub fn construct_hash_tables(
+    input: &[HashTableEntry],
+    cuckoo: &Cuckoo,
+) -> (Vec<HashMap<u32, HashTableEntry>>, Vec<HashTableEntry>) {
     let mut hash_tables = vec![HashMap::new(); cuckoo.no_of_tables as usize];
 
     let mut curr_index = 0;
@@ -92,7 +99,8 @@ pub fn construct_hash_tables(input: &[HashTableEntry], cuckoo: &Cuckoo) {
             curr_element = None;
         }
     }
-    dbg!(stack.len());
+
+    (hash_tables, stack)
 }
 
 #[cfg(test)]
