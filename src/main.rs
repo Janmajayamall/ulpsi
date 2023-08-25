@@ -12,7 +12,7 @@ fn main() {
     let psi_params = PsiParams::default();
     let mut server = Server::new(&psi_params);
 
-    let set_size = 10;
+    let set_size = 2000;
     let raw_item_labels = gen_random_item_labels(set_size);
 
     server.setup(&raw_item_labels);
@@ -46,6 +46,14 @@ fn main() {
         &sk,
         &query_response,
     );
+
+    // remove items that were not inserted in any of the hash tables
+    client_query_state
+        .hash_table_stack()
+        .iter()
+        .for_each(|entry| {
+            expected_item_label_map.remove(&entry.entry_value());
+        });
 
     // check that all items and their labels are in response
     expected_item_label_map.iter().for_each(|(item, label)| {
