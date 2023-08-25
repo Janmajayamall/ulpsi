@@ -1,5 +1,11 @@
 use super::*;
 
+/// Vector of `HashTableQueryResponse`, one for each BigBox
+pub struct QueryResponse(pub(crate) Vec<HashTableQueryResponse>);
+
+/// Contains 2D array of ciphertexts where each row contains response ciphertexts corresponding to a single Segment in BigBox (ie hash table)
+pub struct HashTableQueryResponse(pub(crate) Vec<Vec<Ciphertext>>);
+
 /// A single InnerBoxRow is a wrapper over `span` rows.
 /// It helps view a single column spanned across multiple
 /// rows as a single row. This is required since a single data
@@ -77,7 +83,7 @@ impl InnerBox {
 
         println!(
             "Created InnerBox with {row_count} rows and {} cols",
-            psi_params.eval_degree.0
+            psi_params.eval_degree.inner_box_columns()
         );
 
         InnerBox {
@@ -183,7 +189,8 @@ impl InnerBox {
             // limit polynomial interpolation to maximum columns occupied
             let cols_occupied = self.ht_rows[ibr_index].curr_cols as usize;
 
-            println!("[IB] Interpolating polynomial of degree {cols_occupied}");
+            // TODO: uncomment
+            // println!("[IB] Interpolating polynomial of degree {cols_occupied}");
 
             let c = newton_interpolate(
                 &item.as_slice().unwrap()[..cols_occupied],
@@ -328,28 +335,32 @@ impl BigBox {
         evaluator: &Evaluator,
         ek: &EvaluationKey,
         powers_dag: &HashMap<usize, Node>,
-    ) {
+    ) -> HashTableQueryResponse {
         // there must be one query ciphertext (raised to different source powers) for each segment
         assert!(ht_query_cts.0.len() == self.inner_boxes.len());
 
-        izip!(ht_query_cts.0.iter(), self.inner_boxes.iter()).for_each(|(q_ct_powers, segment)| {
-            // calculate PS powers from source powers
-            let ps_target_powers = calculate_ps_powers_with_dag(
-                evaluator,
-                ek,
-                &q_ct_powers,
-                &self.psi_params.source_powers,
-                self.psi_params.ps_params.powers(),
-                powers_dag,
-                &self.psi_params.ps_params,
-            );
+        let ht_response = izip!(ht_query_cts.0.iter(), self.inner_boxes.iter())
+            .map(|(q_ct_powers, segment)| {
+                // calculate PS powers from source powers
+                let ps_target_powers = calculate_ps_powers_with_dag(
+                    evaluator,
+                    ek,
+                    &q_ct_powers,
+                    &self.psi_params.source_powers,
+                    self.psi_params.ps_params.powers(),
+                    powers_dag,
+                    &self.psi_params.ps_params,
+                );
 
-            // process query ciphertext powers for each InnerBox in segment
-            let res = segment
-                .iter()
-                .map(|ib| ib.evaluate_ps_on_query_ct(&ps_target_powers, evaluator, ek))
-                .collect_vec();
-        });
+                // process query ciphertext powers for each InnerBox in segment
+                segment
+                    .iter()
+                    .map(|ib| ib.evaluate_ps_on_query_ct(&ps_target_powers, evaluator, ek))
+                    .collect_vec()
+            })
+            .collect_vec();
+
+        HashTableQueryResponse(ht_response)
     }
 }
 
@@ -410,11 +421,30 @@ impl Db {
         evaluator: &Evaluator,
         ek: &EvaluationKey,
         powers_dag: &HashMap<usize, Node>,
-    ) {
+    ) -> QueryResponse {
         assert!(query.0.len() == self.psi_params.no_of_hash_tables as usize);
 
-        izip!(query.0.iter(), self.big_boxes.iter()).for_each(|(ht_query_cts, bb)| {
-            bb.process_query(ht_query_cts, evaluator, ek, powers_dag)
-        });
+        let ht_responses = izip!(query.0.iter(), self.big_boxes.iter())
+            .map(|(ht_query_cts, bb)| {
+                let ht_response = bb.process_query(ht_query_cts, evaluator, ek, powers_dag);
+                ht_response
+            })
+            .collect_vec();
+
+        QueryResponse(ht_responses)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{server::Server, PsiParams};
+
+    #[test]
+    fn db_works() {
+        let psi_params = PsiParams::default();
+        let mut server = Server::new(&psi_params);
+
+        let values = vec![(1231, 312313)];
+        server.setup(&values);
     }
 }

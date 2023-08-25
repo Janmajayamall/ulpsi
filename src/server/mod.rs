@@ -3,7 +3,7 @@ use crate::{
     hash::Cuckoo,
     poly_interpolate::newton_interpolate,
     server::paterson_stockmeyer::ps_evaluate_poly,
-    utils::{calculate_ps_powers_with_dag, construct_dag, Node},
+    utils::{calculate_ps_powers_with_dag, construct_dag, gen_bfv_params, Node},
     PsiParams,
 };
 use bfv::{Ciphertext, Encoding, EvaluationKey, Evaluator, Plaintext, Representation};
@@ -33,9 +33,9 @@ impl Deref for HashTableSize {
 
 #[derive(Clone, Debug)]
 pub struct PsiPlaintext {
-    psi_pt_bits: u32,
-    bfv_pt_bits: u32,
-    bfv_pt: u32,
+    pub(crate) psi_pt_bits: u32,
+    pub(crate) bfv_pt_bits: u32,
+    pub(crate) bfv_pt: u32,
 }
 
 impl PsiPlaintext {
@@ -104,12 +104,12 @@ impl ItemLabel {
 
         (
             ((self.item() >> (chunk_index * bits)) & mask) as u32,
-            ((self.item() >> (chunk_index * bits)) & mask) as u32,
+            ((self.label() >> (chunk_index * bits)) & mask) as u32,
         )
     }
 }
 
-struct Server {
+pub struct Server {
     db: Db,
     powers_dag: HashMap<usize, Node>,
     psi_params: PsiParams,
@@ -117,7 +117,8 @@ struct Server {
 }
 
 impl Server {
-    pub fn new(psi_params: &PsiParams, evaluator: Evaluator) -> Server {
+    pub fn new(psi_params: &PsiParams) -> Server {
+        let evaluator = Evaluator::new(gen_bfv_params(psi_params));
         let powers_dag = construct_dag(&psi_params.source_powers, psi_params.ps_params.powers());
 
         let db = Db::new(psi_params);
@@ -130,9 +131,21 @@ impl Server {
         }
     }
 
-    pub fn query(&self, query: &Query, ek: &EvaluationKey) {
+    pub fn setup(&mut self, raw_item_label: &[(u128, u128)]) {
+        raw_item_label.iter().for_each(|(il)| {
+            if self.db.insert(il.0, il.1) {
+                println!("Item {} inserted", il.0);
+            } else {
+                println!("Item {} insert failed. Duplicate Item.", il.0);
+            }
+        });
+
+        self.db.preprocess();
+    }
+
+    pub fn query(&self, query: &Query, ek: &EvaluationKey) -> QueryResponse {
         self.db
-            .handle_query(query, &self.evaluator, ek, &self.powers_dag);
+            .handle_query(query, &self.evaluator, ek, &self.powers_dag)
     }
 }
 #[cfg(test)]

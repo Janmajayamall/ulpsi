@@ -14,6 +14,12 @@ use server::{
 };
 use utils::{decrypt_and_print, rtg_indices_and_levels};
 
+pub use client::*;
+pub use hash::*;
+pub use poly_interpolate::*;
+pub use server::*;
+pub use utils::*;
+
 mod client;
 mod hash;
 mod poly_interpolate;
@@ -40,7 +46,7 @@ impl Default for PsiParams {
         let psi_pt = PsiPlaintext::new(128, 16, 65537);
 
         PsiParams {
-            no_of_hash_tables: 3,
+            no_of_hash_tables: 1,
             ht_size: HashTableSize(1 << 12),
             ct_slots: CiphertextSlots(1 << 13),
             eval_degree: ps_params.eval_degree(),

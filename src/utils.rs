@@ -1,10 +1,10 @@
-use crate::server::paterson_stockmeyer::PSParams;
+use crate::{server::paterson_stockmeyer::PSParams, PsiParams};
 use bfv::{
     BfvParameters, Ciphertext, Encoding, EvaluationKey, Evaluator, Plaintext, PolyCache, PolyType,
     Representation, SecretKey,
 };
-use itertools::izip;
-use rand::thread_rng;
+use itertools::{izip, Itertools};
+use rand::{distributions::Uniform, thread_rng, Rng};
 use rand_chacha::rand_core::le;
 use std::collections::HashMap;
 use traits::TryEncodingWithParameters;
@@ -173,6 +173,52 @@ pub fn bfv_setup_test() -> (Evaluator, SecretKey) {
     (Evaluator::new(params), sk)
 }
 
+pub fn gen_bfv_params(psi_params: &PsiParams) -> BfvParameters {
+    let mut params = BfvParameters::new(
+        &psi_params.bfv_moduli,
+        psi_params.bfv_plaintext,
+        psi_params.bfv_degree,
+    );
+    params.enable_hybrid_key_switching(&[50, 50, 50]);
+    params
+}
+
+pub fn gen_random_item_labels(count: usize) -> Vec<(u128, u128)> {
+    let rng = thread_rng();
+    rng.clone()
+        .sample_iter(Uniform::new(0, u128::MAX))
+        .take(count * 2)
+        .zip(
+            rng.clone()
+                .sample_iter(Uniform::new(0, u128::MAX))
+                .take(count * 2),
+        )
+        .map(|(item, label)| (item, label))
+        .collect_vec()
+}
+
+pub fn value_to_chunks(value: u128, chunk_count: u32, bits_per_chunk: u32) -> Vec<u32> {
+    let mask = (1 << bits_per_chunk) - 1;
+
+    let mut chunks = vec![];
+    for i in 0..chunk_count {
+        chunks.push(((value >> (i * bits_per_chunk)) & mask) as u32)
+    }
+    chunks
+}
+
+/// Chunks must be in little endian
+pub fn chunks_to_value(chunks: &[u32], total_bits: u32, bits_per_chunk: u32) -> u128 {
+    assert!(chunks.len() == (total_bits / bits_per_chunk) as usize);
+
+    let mut value = 0u128;
+
+    chunks.iter().enumerate().for_each(|(index, c)| {
+        value += (*c as u128) << (index * bits_per_chunk as usize);
+    });
+
+    value
+}
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
