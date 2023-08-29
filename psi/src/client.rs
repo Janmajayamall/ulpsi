@@ -149,6 +149,16 @@ impl HashTableQuery {
         }
     }
 
+    pub fn segments_count(
+        ht_size: &HashTableSize,
+        ct_slots: &CiphertextSlots,
+        psi_pt: &PsiPlaintext,
+    ) -> u32 {
+        let ib_query_rows = InnerBoxQuery::max_rows(ct_slots, psi_pt);
+        let segments = (ht_size.deref() + (ib_query_rows >> 1)) / ib_query_rows;
+        segments
+    }
+
     pub fn process_hash_table(&mut self, hash_table: &HashMap<u32, HashTableEntry>) {
         for i in 0..*self.ht_size.deref() {
             match hash_table.get(&i) {
@@ -177,7 +187,7 @@ impl HashTableQuery {
         let ht_table_query_cts = self
             .ib_queries
             .iter()
-            .map(|q| {
+            .flat_map(|q| {
                 let q_sources_powers = calculate_source_powers(
                     &q.data,
                     &source_powers,
@@ -274,11 +284,13 @@ impl HashTableQuery {
     }
 }
 
-/// Encrypted queries for the HashTable. Contains 2D array of ciphertext where a single row
-/// contains same InnerBoxQuery raised to required source powers. There must be as many as `Segments`
-/// rows, one InnerBoxQuery for each segment of BigBox.
-pub struct HashTableQueryCts(pub(crate) Vec<Vec<Ciphertext>>);
+/// Encrypted queries for the HashTable. Though ciphertexts are stored in vector, they must be viewed as 2D array of ciphertexts stored in row major form. 2D array has
+/// `Segments` rows, since one InnerBoxQuery maps to one segment in BigBox. 2D array has source powers count columns since each row contains same InnerBoxQuery raised
+/// to different source powers.
+#[derive(Debug, PartialEq)]
+pub struct HashTableQueryCts(pub(crate) Vec<Ciphertext>);
 
+#[derive(Debug, PartialEq)]
 pub struct Query(pub(crate) Vec<HashTableQueryCts>);
 
 pub struct QueryState {
@@ -392,7 +404,10 @@ pub fn process_query_response(
 mod tests {
     use rand::{distributions::Uniform, thread_rng};
 
-    use crate::utils::gen_bfv_params;
+    use crate::{
+        serlize::{deserialize_query, serialize_query},
+        utils::gen_bfv_params,
+    };
 
     use super::*;
 
@@ -412,5 +427,31 @@ mod tests {
             .collect_vec();
 
         let query_response = construct_query(&query_set, &psi_params, &evaluator, &sk, &mut rng);
+    }
+
+    #[test]
+    fn serialize_and_deserialize_query_works() {
+        let mut rng = thread_rng();
+        let psi_params = PsiParams::default();
+
+        let bfv_params = gen_bfv_params(&psi_params);
+        let evaluator = Evaluator::new(bfv_params);
+        let sk = SecretKey::random_with_params(evaluator.params(), &mut rng);
+
+        let query_set = rng
+            .clone()
+            .sample_iter(Uniform::new(0, u128::MAX))
+            .take(100)
+            .collect_vec();
+
+        let query_state = construct_query(&query_set, &psi_params, &evaluator, &sk, &mut rng);
+
+        // serialize
+        let query_bytes = serialize_query(query_state.query(), evaluator.params());
+
+        // query back
+        let query_back = deserialize_query(&query_bytes, &psi_params, &evaluator);
+
+        assert_eq!(&query_back, query_state.query());
     }
 }

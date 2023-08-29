@@ -23,6 +23,7 @@ pub use utils::*;
 mod client;
 mod hash;
 mod poly_interpolate;
+mod serlize;
 mod server;
 mod utils;
 

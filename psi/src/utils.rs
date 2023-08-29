@@ -120,6 +120,9 @@ pub fn construct_dag(source_powers: &[usize], target_powers: &[usize]) -> HashMa
     dag
 }
 
+/// Calculates target powers ciphertexts from source powers ciphertexts using DAG. All source powers ciphertexts
+/// must be in Coefficient representation. Before returning all ciphertexts corresponding to power <= low_degree are changed
+/// to Evaluation representation for efficient plaintext multiplication in inner k loop for PS.
 pub fn calculate_ps_powers_with_dag(
     evaluator: &Evaluator,
     ek: &EvaluationKey,
@@ -133,6 +136,7 @@ pub fn calculate_ps_powers_with_dag(
 
     // insert all source powers
     izip!(source_powers.iter(), source_cts.iter()).for_each(|(p, ct)| {
+        assert!(ct.c_ref()[0].representation() == &Representation::Coefficient);
         target_powers_cts.insert(*p, ct.clone());
     });
 

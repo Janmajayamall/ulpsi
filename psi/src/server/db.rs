@@ -339,28 +339,35 @@ impl BigBox {
         powers_dag: &HashMap<usize, Node>,
     ) -> HashTableQueryResponse {
         // there must be one query ciphertext (raised to different source powers) for each segment
-        assert!(ht_query_cts.0.len() == self.inner_boxes.len());
+        assert!(
+            ht_query_cts.0.len() == self.inner_boxes.len() * self.psi_params.source_powers.len()
+        );
 
-        let ht_response = izip!(ht_query_cts.0.iter(), self.inner_boxes.iter())
-            .map(|(q_ct_powers, segment)| {
-                // calculate PS powers from source powers
-                let ps_target_powers = calculate_ps_powers_with_dag(
-                    evaluator,
-                    ek,
-                    &q_ct_powers,
-                    &self.psi_params.source_powers,
-                    self.psi_params.ps_params.powers(),
-                    powers_dag,
-                    &self.psi_params.ps_params,
-                );
+        let ht_response = izip!(
+            ht_query_cts
+                .0
+                .chunks_exact(self.psi_params.source_powers.len()),
+            self.inner_boxes.iter()
+        )
+        .map(|(q_ct_powers, segment)| {
+            // calculate PS powers from source powers
+            let ps_target_powers = calculate_ps_powers_with_dag(
+                evaluator,
+                ek,
+                &q_ct_powers,
+                &self.psi_params.source_powers,
+                self.psi_params.ps_params.powers(),
+                powers_dag,
+                &self.psi_params.ps_params,
+            );
 
-                // process query ciphertext powers for each InnerBox in segment
-                segment
-                    .iter()
-                    .map(|ib| ib.evaluate_ps_on_query_ct(&ps_target_powers, evaluator, ek))
-                    .collect_vec()
-            })
-            .collect_vec();
+            // process query ciphertext powers for each InnerBox in segment
+            segment
+                .iter()
+                .map(|ib| ib.evaluate_ps_on_query_ct(&ps_target_powers, evaluator, ek))
+                .collect_vec()
+        })
+        .collect_vec();
 
         HashTableQueryResponse(ht_response)
     }
