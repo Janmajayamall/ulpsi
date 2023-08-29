@@ -219,6 +219,22 @@ pub fn chunks_to_value(chunks: &[u32], total_bits: u32, bits_per_chunk: u32) -> 
 
     value
 }
+
+// Measures time in ms for enclosed code block.
+// Credit: https://github.com/zama-ai/demo_z8z/blob/1f24eeaf006263543062e90f1d1692d381a726cf/src/zqz/utils.rs#L28C1-L42C2
+#[macro_export]
+macro_rules! time_it{
+    ($title: tt, $($block:tt)+) => {
+        let __now = std::time::SystemTime::now();
+        $(
+           $block
+        )+
+        let __time = __now.elapsed().unwrap().as_millis();
+        let __ms_time = format!("{} ms", __time);
+        println!("{} duration: {}", $title, __ms_time);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;

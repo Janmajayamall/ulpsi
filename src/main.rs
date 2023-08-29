@@ -12,7 +12,7 @@ fn main() {
     let psi_params = PsiParams::default();
     let mut server = Server::new(&psi_params);
 
-    let set_size = 2000;
+    let set_size = 1000000;
     let raw_item_labels = gen_random_item_labels(set_size);
 
     server.setup(&raw_item_labels);
@@ -21,7 +21,7 @@ fn main() {
     let mut expected_item_label_map = HashMap::new();
     let query_set = raw_item_labels
         .iter()
-        .take(5)
+        .take(100)
         .map(|il| {
             expected_item_label_map.insert(il.0, il.1);
             il.0
@@ -45,6 +45,11 @@ fn main() {
         &evaluator,
         &sk,
         &query_response,
+    );
+
+    println!(
+        "Hash stack size: {}",
+        client_query_state.hash_table_stack().len()
     );
 
     // remove items that were not inserted in any of the hash tables

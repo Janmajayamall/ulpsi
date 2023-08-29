@@ -1,3 +1,5 @@
+use rayon::prelude::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
+
 use super::*;
 
 /// Vector of `HashTableQueryResponse`, one for each BigBox
@@ -318,11 +320,11 @@ impl BigBox {
     /// Proprocesses each InnerBox
     pub fn preprocess(&mut self) {
         self.inner_boxes
-            .iter_mut()
+            .par_iter_mut()
             .enumerate()
             .for_each(|(s_i, segment)| {
-                segment.iter_mut().enumerate().for_each(|(i, ib)| {
-                    println!("[BB] Preprocessing IB from segment {s_i} at index {i}");
+                segment.par_iter_mut().for_each(|ib| {
+                    println!("[BB] Preprocessing IB from segment {s_i} at index ?");
                     ib.generate_coefficients();
                 });
             });
@@ -408,7 +410,7 @@ impl Db {
     }
 
     pub fn preprocess(&mut self) {
-        self.big_boxes.iter_mut().for_each(|bb| bb.preprocess());
+        self.big_boxes.par_iter_mut().for_each(|bb| bb.preprocess());
     }
 
     pub fn db_size(&self) -> usize {
