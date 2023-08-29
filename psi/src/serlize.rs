@@ -1,12 +1,43 @@
+use crate::{
+    db, HashTableQuery, HashTableQueryCts, HashTableQueryResponse, PsiParams, Query, QueryResponse,
+};
 use bfv::{
-    BfvParameters, Ciphertext, CiphertextProto, Encoding, Evaluator, Representation, SecretKey,
+    BfvParameters, Ciphertext, CiphertextProto, Encoding, Evaluator, PolyCache, Representation,
+    SecretKey,
 };
 use itertools::Itertools;
 use prost::Message;
 use rand::thread_rng;
 use traits::TryFromWithParameters;
 
-use crate::{HashTableQuery, HashTableQueryCts, PsiParams, Query};
+pub struct SerializedQueryResponse {
+    bytes: Vec<u8>,
+    /// indicates no. of inner boxes within a segment. Segments of each bigbox are stored in continuation.
+    inner_boxes_per_segment: Vec<usize>,
+}
+
+pub fn size_of_unseeded_ciphertext_last_level(evaluator: &Evaluator) -> usize {
+    let mut rng = thread_rng();
+    let m = vec![];
+    let sk = SecretKey::random_with_params(evaluator.params(), &mut rng);
+    let mut ct = evaluator.encrypt(
+        &sk,
+        &evaluator.plaintext_encode(&m, Encoding::default()),
+        &mut rng,
+    );
+
+    // nullify seed
+    evaluator.ciphertext_change_representation(&mut ct, Representation::Evaluation);
+    let pt = evaluator.plaintext_encode(&m, Encoding::simd(0, PolyCache::Mul(bfv::PolyType::Q)));
+    evaluator.mul_plaintext_assign(&mut ct, &pt);
+
+    // mod down to last level
+    evaluator.ciphertext_change_representation(&mut ct, Representation::Coefficient);
+    evaluator.mod_down_level(&mut ct, evaluator.params().ciphertext_moduli.len() - 1);
+
+    let ct_proto = CiphertextProto::try_from_with_parameters(&ct, evaluator.params());
+    ct_proto.encode_to_vec().len()
+}
 
 pub fn size_of_seeded_ciphertext(evaluator: &Evaluator) -> usize {
     let mut rng = thread_rng();
@@ -80,4 +111,88 @@ pub fn deserialize_query(bytes: &[u8], psi_params: &PsiParams, evaluator: &Evalu
         .collect();
 
     Query(ht_query_cts)
+}
+
+pub fn serialize_query_response(
+    query_response: &QueryResponse,
+    bfv_params: &BfvParameters,
+) -> SerializedQueryResponse {
+    let bytes = query_response
+        .0
+        .iter()
+        .flat_map(|ht_query_response| {
+            ht_query_response.0.iter().flat_map(|segment_response_cts| {
+                segment_response_cts.iter().flat_map(|ct| {
+                    let ct_proto = CiphertextProto::try_from_with_parameters(ct, bfv_params);
+                    let tmp = ct_proto.encode_to_vec();
+                    tmp
+                })
+            })
+        })
+        .collect_vec();
+
+    let inner_box_lengths = query_response
+        .0
+        .iter()
+        .flat_map(|ht_query_response| {
+            ht_query_response
+                .0
+                .iter()
+                .map(|segment_response_cts| segment_response_cts.len())
+        })
+        .collect_vec();
+
+    SerializedQueryResponse {
+        bytes,
+        inner_boxes_per_segment: inner_box_lengths,
+    }
+}
+
+pub fn deserialize_query_response(
+    serialized_query_response: &SerializedQueryResponse,
+    psi_params: &PsiParams,
+    evaluator: &Evaluator,
+) -> QueryResponse {
+    // Can't validate bytes directly since response size is variable.
+    let bytes_single_ct = size_of_unseeded_ciphertext_last_level(evaluator);
+
+    let segments_per_hash_table = HashTableQuery::segments_count(
+        &psi_params.ht_size,
+        &psi_params.ct_slots,
+        &psi_params.psi_pt,
+    ) as usize;
+    let total_expected_segments_response =
+        psi_params.no_of_hash_tables as usize * segments_per_hash_table;
+    assert_eq!(
+        serialized_query_response.inner_boxes_per_segment.len(),
+        total_expected_segments_response
+    );
+
+    let mut query_response = vec![];
+    let mut ciphertexts_processed = 0;
+    serialized_query_response
+        .inner_boxes_per_segment
+        .chunks_exact(segments_per_hash_table)
+        .for_each(|segments| {
+            // process segments of BigBox
+            let mut ht_table_query_response = vec![];
+            segments.iter().for_each(|segment_length| {
+                // process response ciphertexts for the segment
+                let mut segment_query_response = vec![];
+                for inner_box_index in 0..*segment_length {
+                    let bytes = &serialized_query_response.bytes[ciphertexts_processed
+                        * bytes_single_ct
+                        ..(ciphertexts_processed + 1) * bytes_single_ct];
+                    let ct_proto = CiphertextProto::decode(bytes).unwrap();
+                    let ct = Ciphertext::try_from_with_parameters(&ct_proto, evaluator.params());
+                    segment_query_response.push(ct);
+                    ciphertexts_processed += 1;
+                }
+                ht_table_query_response.push(segment_query_response);
+            });
+
+            query_response.push(HashTableQueryResponse(ht_table_query_response));
+        });
+
+    QueryResponse(query_response)
 }

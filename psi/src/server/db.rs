@@ -3,9 +3,11 @@ use rayon::prelude::{IndexedParallelIterator, IntoParallelRefMutIterator, Parall
 use super::*;
 
 /// Vector of `HashTableQueryResponse`, one for each BigBox
+#[derive(Debug, PartialEq)]
 pub struct QueryResponse(pub(crate) Vec<HashTableQueryResponse>);
 
 /// Contains 2D array of ciphertexts where each row contains response ciphertexts corresponding to a single Segment in BigBox (ie hash table)
+#[derive(Debug, PartialEq)]
 pub struct HashTableQueryResponse(pub(crate) Vec<Vec<Ciphertext>>);
 
 /// A single InnerBoxRow is a wrapper over `span` rows.
@@ -226,6 +228,8 @@ impl InnerBox {
         );
 
         //TODO: evalutor.mod_down_level(&mut res_ct, 0);
+        // mod down to last level
+        evalutor.mod_down_level(&mut res_ct, self.psi_params.bfv_moduli.len() - 1);
         res_ct
     }
 }

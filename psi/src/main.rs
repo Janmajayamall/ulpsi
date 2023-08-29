@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use bfv::{EvaluationKey, Evaluator, SecretKey};
 use itertools::Itertools;
 use psi::{
-    construct_query, db, gen_bfv_params, gen_random_item_labels, process_query_response, PsiParams,
-    Server,
+    construct_query, db, deserialize_query_response, gen_bfv_params, gen_random_item_labels,
+    process_query_response, serialize_query_response, PsiParams, Server,
 };
 use rand::thread_rng;
 
@@ -12,7 +12,7 @@ fn main() {
     let psi_params = PsiParams::default();
     let mut server = Server::new(&psi_params);
 
-    let set_size = 10000;
+    let set_size = 10;
     let raw_item_labels = gen_random_item_labels(set_size);
 
     server.setup(&raw_item_labels);
@@ -21,7 +21,7 @@ fn main() {
     let mut expected_item_label_map = HashMap::new();
     let query_set = raw_item_labels
         .iter()
-        .take(100)
+        .take(1)
         .map(|il| {
             expected_item_label_map.insert(il.0, il.1);
             il.0
@@ -38,6 +38,15 @@ fn main() {
     let client_query_state = construct_query(&query_set, &psi_params, &evaluator, &sk, &mut rng);
 
     let query_response = server.query(client_query_state.query(), &ek);
+
+    {
+        let serialized_query_response =
+            serialize_query_response(&query_response, evaluator.params());
+        let query_response_back =
+            deserialize_query_response(&serialized_query_response, &psi_params, &evaluator);
+
+        assert_eq!(&query_response, &query_response_back);
+    }
 
     let response = process_query_response(
         &psi_params,

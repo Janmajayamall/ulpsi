@@ -17,6 +17,7 @@ use utils::{decrypt_and_print, rtg_indices_and_levels};
 pub use client::*;
 pub use hash::*;
 pub use poly_interpolate::*;
+pub use serlize::*;
 pub use server::*;
 pub use utils::*;
 
