@@ -1,4 +1,7 @@
-use crate::{server::paterson_stockmeyer::PSParams, PsiParams};
+use crate::{
+    server::{paterson_stockmeyer::PSParams, ItemLabel},
+    PsiParams,
+};
 use bfv::{
     BfvParameters, Ciphertext, Encoding, EvaluationKey, Evaluator, Plaintext, PolyCache, PolyType,
     Representation, SecretKey,
@@ -187,7 +190,7 @@ pub fn gen_bfv_params(psi_params: &PsiParams) -> BfvParameters {
     params
 }
 
-pub fn gen_random_item_labels(count: usize) -> Vec<(u128, u128)> {
+pub fn gen_random_item_labels(count: usize) -> Vec<ItemLabel> {
     let rng = thread_rng();
     rng.clone()
         .sample_iter(Uniform::new(0, u128::MAX))
@@ -197,7 +200,7 @@ pub fn gen_random_item_labels(count: usize) -> Vec<(u128, u128)> {
                 .sample_iter(Uniform::new(0, u128::MAX))
                 .take(count * 2),
         )
-        .map(|(item, label)| (item, label))
+        .map(|(item, label)| ItemLabel::new(item, label))
         .collect_vec()
 }
 
@@ -237,6 +240,37 @@ macro_rules! time_it{
         let __ms_time = format!("{} ms", __time);
         println!("{} duration: {}", $title, __ms_time);
     }
+}
+
+fn generate_random_item_labels_and_store() {
+    let set_size = 1000;
+    let intersection_size = 100;
+
+    assert!(set_size > intersection_size);
+
+    let server_set = gen_random_item_labels(set_size);
+
+    let mut inserted_indices = vec![];
+    let mut client_set = vec![];
+    let mut rng = thread_rng();
+    while inserted_indices.len() != intersection_size {
+        let index = rng.gen_range(0..set_size);
+        if !inserted_indices.contains(&index) {
+            inserted_indices.push(index);
+            client_set.push(server_set[index].clone());
+        }
+    }
+
+    // create parent directory for data
+    std::fs::create_dir_all("./../data").expect("Create data directory failed");
+
+    let mut server_file = std::fs::File::create("./../data/server_set.json")
+        .expect("Failed to create server_set.json");
+    serde_json::to_writer_pretty(&mut server_file, &server_set).unwrap();
+
+    let mut client_file = std::fs::File::create("./../data/client_set.json")
+        .expect("Failed to create server_set.json");
+    serde_json::to_writer_pretty(&mut client_file, &client_set).unwrap();
 }
 
 #[cfg(test)]
@@ -314,5 +348,10 @@ mod tests {
 
             assert_eq!(m, vec![expected_m; evaluator.params().degree]);
         })
+    }
+
+    #[test]
+    fn generate_random_item_labels_and_store_works() {
+        generate_random_item_labels_and_store();
     }
 }

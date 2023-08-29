@@ -23,8 +23,8 @@ fn main() {
         .iter()
         .take(1)
         .map(|il| {
-            expected_item_label_map.insert(il.0, il.1);
-            il.0
+            expected_item_label_map.insert(il.item(), il.label());
+            il.item()
         })
         .collect_vec();
 

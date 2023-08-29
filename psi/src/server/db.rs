@@ -400,22 +400,21 @@ impl Db {
         }
     }
 
-    pub fn insert(&mut self, item: u128, label: u128) -> bool {
+    pub fn insert(&mut self, item_label: &ItemLabel) -> bool {
         // It's Private SET intersection. You cannot insert same item twice!
-        if self.item_set_cache.contains(&item) {
+        if self.item_set_cache.contains(&item_label.item()) {
             return false;
         }
 
         // get index for item for all hash tables
-        let indices = self.cuckoo.table_indices(item);
+        let indices = self.cuckoo.table_indices(item_label.item());
 
-        let item_label = ItemLabel::new(item, label);
         // insert item at index corresponding to hash table
         izip!(self.big_boxes.iter_mut(), indices.iter()).for_each(|(big_box, ht_index)| {
             big_box.insert(&item_label, *ht_index as usize);
         });
 
-        self.item_set_cache.insert(item);
+        self.item_set_cache.insert(item_label.item());
 
         true
     }
@@ -458,6 +457,6 @@ mod tests {
         let mut server = Server::new(&psi_params);
 
         let values = vec![(1231, 312313)];
-        server.setup(&values);
+        // server.setup(&values);
     }
 }

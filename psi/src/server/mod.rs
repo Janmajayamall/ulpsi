@@ -10,13 +10,13 @@ use bfv::{Ciphertext, Encoding, EvaluationKey, Evaluator, Plaintext, Representat
 use db::{BigBox, InnerBox};
 use itertools::{izip, Itertools};
 use ndarray::Array2;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
     ops::Deref,
 };
 
 pub use db::*;
-
 pub mod db;
 pub mod paterson_stockmeyer;
 
@@ -81,18 +81,22 @@ impl EvalPolyDegree {
 }
 
 /// Warning: We assume that bits in both label and item are equal.
-pub struct ItemLabel(u128, u128);
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ItemLabel {
+    item: u128,
+    label: u128,
+}
 impl ItemLabel {
     pub fn new(item: u128, label: u128) -> ItemLabel {
-        ItemLabel(item, label)
+        ItemLabel { item, label }
     }
 
     pub fn item(&self) -> u128 {
-        self.0
+        self.item
     }
 
     pub fn label(&self) -> u128 {
-        self.1
+        self.label
     }
 
     /// `item` is greater
@@ -131,12 +135,12 @@ impl Server {
         }
     }
 
-    pub fn setup(&mut self, raw_item_label: &[(u128, u128)]) {
-        raw_item_label.iter().for_each(|(il)| {
-            if self.db.insert(il.0, il.1) {
-                println!("Item {} inserted", il.0);
+    pub fn setup(&mut self, item_labels: &[ItemLabel]) {
+        item_labels.iter().for_each(|(i)| {
+            if self.db.insert(i) {
+                println!("Item {} inserted", i.item());
             } else {
-                println!("Item {} insert failed. Duplicate Item.", il.0);
+                println!("Item {} insert failed. Duplicate Item.", i.item());
             }
         });
 
