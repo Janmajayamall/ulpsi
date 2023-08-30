@@ -11,9 +11,6 @@ use tokio::{
 };
 use traits::TryFromWithParameters;
 
-/// Set to some very large value (10 Mb)
-const BUFFER_BYTES: usize = 10485760;
-
 #[tokio::main]
 async fn main() {
     // Bind the listener to the address

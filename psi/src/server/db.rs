@@ -1,4 +1,10 @@
-use rayon::prelude::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
+use rayon::{
+    prelude::{
+        IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
+        IntoParallelRefMutIterator, ParallelIterator,
+    },
+    slice::ParallelSlice,
+};
 
 use super::*;
 
@@ -347,31 +353,36 @@ impl BigBox {
             ht_query_cts.0.len() == self.inner_boxes.len() * self.psi_params.source_powers.len()
         );
 
-        let ht_response = izip!(
-            ht_query_cts
-                .0
-                .chunks_exact(self.psi_params.source_powers.len()),
-            self.inner_boxes.iter()
-        )
-        .map(|(q_ct_powers, segment)| {
-            // calculate PS powers from source powers
-            let ps_target_powers = calculate_ps_powers_with_dag(
-                evaluator,
-                ek,
-                &q_ct_powers,
-                &self.psi_params.source_powers,
-                self.psi_params.ps_params.powers(),
-                powers_dag,
-                &self.psi_params.ps_params,
-            );
+        let ht_query_cts_chunked_as_source_powers = ht_query_cts
+            .0
+            .par_chunks_exact(self.psi_params.source_powers.len());
 
-            // process query ciphertext powers for each InnerBox in segment
-            segment
-                .iter()
-                .map(|ib| ib.evaluate_ps_on_query_ct(&ps_target_powers, evaluator, ek))
-                .collect_vec()
-        })
-        .collect_vec();
+        let mut ht_response = Vec::new();
+        ht_query_cts_chunked_as_source_powers
+            .into_par_iter()
+            .zip(self.inner_boxes.par_iter())
+            .map(|(query_ct_powers, segment)| {
+                // calculate PS powers from source powers
+                // TODO: parallelizing `calculate_ps_powers_with_dag` can give speed up since it bottlenecks further multithreading. Usually there will be far less segments to process in parallel than available threads (with default parameters segments = 4).
+                let ps_target_powers = calculate_ps_powers_with_dag(
+                    evaluator,
+                    ek,
+                    &query_ct_powers,
+                    &self.psi_params.source_powers,
+                    self.psi_params.ps_params.powers(),
+                    powers_dag,
+                    &self.psi_params.ps_params,
+                );
+
+                let mut ib_responses = Vec::new();
+                segment
+                    .par_iter()
+                    .map(|ib| ib.evaluate_ps_on_query_ct(&ps_target_powers, evaluator, ek))
+                    .collect_into_vec(&mut ib_responses);
+
+                ib_responses
+            })
+            .collect_into_vec(&mut ht_response);
 
         HashTableQueryResponse(ht_response)
     }
@@ -436,12 +447,16 @@ impl Db {
     ) -> QueryResponse {
         assert!(query.0.len() == self.psi_params.no_of_hash_tables as usize);
 
-        let ht_responses = izip!(query.0.iter(), self.big_boxes.iter())
+        let mut ht_responses = Vec::new();
+        query
+            .0
+            .par_iter()
+            .zip(self.big_boxes.par_iter())
             .map(|(ht_query_cts, bb)| {
                 let ht_response = bb.process_query(ht_query_cts, evaluator, ek, powers_dag);
                 ht_response
             })
-            .collect_vec();
+            .collect_into_vec(&mut ht_responses);
 
         QueryResponse(ht_responses)
     }
