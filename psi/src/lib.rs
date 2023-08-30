@@ -2,16 +2,16 @@ use std::{collections::HashMap, hash::Hash};
 
 use bfv::{
     BfvParameters, Ciphertext, Encoding, EvaluationKey, Evaluator, Plaintext, PolyCache, PolyType,
-    Representation, SecretKey,
+    Representation, SecretKey, SecretKeyProto,
 };
 use hash::Cuckoo;
 use itertools::{izip, Itertools};
 use rand::thread_rng;
 use rand_chacha::rand_core::le;
 use server::{
-    paterson_stockmeyer::PSParams, CiphertextSlots, EvalPolyDegree, HashTableSize, ItemLabel,
-    PsiPlaintext,
+    paterson_stockmeyer::PSParams, CiphertextSlots, EvalPolyDegree, HashTableSize, PsiPlaintext,
 };
+use traits::TryFromWithParameters;
 use utils::{decrypt_and_print, rtg_indices_and_levels};
 
 pub use client::*;

@@ -8,9 +8,13 @@ use bfv::{
 use itertools::Itertools;
 use prost::Message;
 use rand::thread_rng;
+use serde::{Deserialize, Serialize};
 use traits::TryFromWithParameters;
 
+#[derive(Serialize, Deserialize)]
 pub struct SerializedQueryResponse {
+    // TODO: check response size with and without `serde_bytes`
+    #[serde(with = "serde_bytes")]
     bytes: Vec<u8>,
     /// indicates no. of inner boxes within a segment. Segments of each bigbox are stored in continuation.
     inner_boxes_per_segment: Vec<usize>,
@@ -63,6 +67,18 @@ pub fn serialize_query(query: &Query, bfv_params: &BfvParameters) -> Vec<u8> {
             })
         })
         .collect_vec()
+}
+
+pub fn expected_query_bytes(evaluator: &Evaluator, psi_params: &PsiParams) -> usize {
+    let size_single_ct = size_of_seeded_ciphertext(evaluator);
+    size_single_ct
+        * psi_params.source_powers.len()
+        * HashTableQuery::segments_count(
+            &psi_params.ht_size,
+            &psi_params.ct_slots,
+            &psi_params.psi_pt,
+        ) as usize
+        * psi_params.no_of_hash_tables as usize
 }
 
 pub fn deserialize_query(bytes: &[u8], psi_params: &PsiParams, evaluator: &Evaluator) -> Query {

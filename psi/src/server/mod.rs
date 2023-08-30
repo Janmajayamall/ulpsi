@@ -81,7 +81,7 @@ impl EvalPolyDegree {
 }
 
 /// Warning: We assume that bits in both label and item are equal.
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ItemLabel {
     item: u128,
     label: u128,
@@ -121,6 +121,14 @@ pub struct Server {
 }
 
 impl Server {
+    pub fn psi_params(&self) -> &PsiParams {
+        &self.psi_params
+    }
+
+    pub fn evaluator(&self) -> &Evaluator {
+        &self.evaluator
+    }
+
     pub fn new(psi_params: &PsiParams) -> Server {
         let evaluator = Evaluator::new(gen_bfv_params(psi_params));
         let powers_dag = construct_dag(&psi_params.source_powers, psi_params.ps_params.powers());

@@ -1,6 +1,18 @@
-use psi::{db, PsiParams, Server};
-use std::error::Error;
-use tokio::net::{TcpListener, TcpStream};
+use bfv::{EvaluationKey, EvaluationKeyProto};
+use prost::Message;
+use psi::{
+    db, deserialize_query, expected_query_bytes, serialize_query_response, ItemLabel, PsiParams,
+    Server,
+};
+use std::{error::Error, io::Read};
+use tokio::{
+    io::{AsyncBufReadExt, BufReader, *},
+    net::{TcpListener, TcpStream},
+};
+use traits::TryFromWithParameters;
+
+/// Set to some very large value (10 Mb)
+const BUFFER_BYTES: usize = 10485760;
 
 #[tokio::main]
 async fn main() {
@@ -8,28 +20,68 @@ async fn main() {
     let listener = TcpListener::bind("127.0.0.1:6379").await.unwrap();
 
     let psi_params = PsiParams::default();
-    let server = Server::new(&psi_params);
+    let mut server = Server::new(&psi_params);
 
     // setup server
+    let file =
+        std::fs::File::open("./../data/server_set.json").expect("Failed to open server_set.json");
+    let reader = std::io::BufReader::new(file);
+    let item_labels: Vec<ItemLabel> =
+        serde_json::from_reader(reader).expect("Invalid server_set.json file");
+    // setup server with item labels
+    server.setup(&item_labels);
 
     loop {
         // The second item contains the IP and port of the new connection.
-        let (socket, _) = listener.accept().await.unwrap();
-        process(socket, &server).await;
+        let (mut socket, _) = listener.accept().await.unwrap();
+        process(socket, &server).await.unwrap();
     }
 }
 
-async fn process(socket: TcpStream, server: &Server) -> Result<(), Box<dyn Error>> {
-    // read the query
-    // process the query
-    // seralise the response
-    // send back
+pub fn read_client_evaluation_key(server: &Server) -> EvaluationKey {
+    let mut file = std::fs::File::open("./../data/client_evaluation_key.bin")
+        .expect("Failed to open client_evaluation_key.bin");
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer)
+        .expect("Unable to read client_evaluation_key.bin");
+    let ek_proto =
+        EvaluationKeyProto::decode(&*buffer).expect("Malformed client_evalaution_key.bin");
+    let evaluation_key =
+        EvaluationKey::try_from_with_parameters(&ek_proto, server.evaluator().params());
+    evaluation_key
+}
 
+async fn process(mut socket: TcpStream, server: &Server) -> Result<()> {
     socket.readable().await?;
 
-    let mut buff = vec![0; 50];
-    socket.try_read(&mut buff).unwrap();
+    // read query into buffer
+    let expected_bytes = expected_query_bytes(server.evaluator(), server.psi_params());
+    let mut query_buffer = vec![0; expected_bytes];
+    socket.read_exact(&mut query_buffer).await?;
 
-    dbg!("works!", buff);
+    // deserialize query
+    let query = deserialize_query(&query_buffer, server.psi_params(), server.evaluator());
+    println!("Deserialize Query");
+
+    // read client's evaluation key
+    let client_evaluation_key = read_client_evaluation_key(server);
+    println!("Deserialize Client Evaluation Key");
+
+    // Start processing Query
+    println!("Processing Query...");
+    let now = std::time::Instant::now();
+    let query_response = server.query(&query, &client_evaluation_key);
+    println!("Query Processing Time: {} ms", now.elapsed().as_millis());
+
+    // serialize response
+    let serialized_query_response =
+        serialize_query_response(&query_response, server.evaluator().params());
+
+    let response_bytes = bincode::serialize(&serialized_query_response).unwrap();
+
+    socket.writable().await?;
+
+    socket.write_all(&response_bytes).await?;
+
     Ok(())
 }

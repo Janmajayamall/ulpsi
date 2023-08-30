@@ -242,6 +242,11 @@ macro_rules! time_it{
     }
 }
 
+pub fn generate_evaluation_key(evaluator: &Evaluator, sk: &SecretKey) -> EvaluationKey {
+    let mut rng = thread_rng();
+    EvaluationKey::new(evaluator.params(), &sk, &[0], &[], &[], &mut rng)
+}
+
 fn generate_random_item_labels_and_store() {
     let set_size = 1000;
     let intersection_size = 100;
