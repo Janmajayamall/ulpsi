@@ -18,10 +18,10 @@ async fn main() {
 
     // setup server
     let file =
-        std::fs::File::open("./../data/server_set.json").expect("Failed to open server_set.json");
+        std::fs::File::open("./../data/server_set.bin").expect("Failed to open server_set.bin");
     let reader = std::io::BufReader::new(file);
     let item_labels: Vec<ItemLabel> =
-        serde_json::from_reader(reader).expect("Invalid server_set.json file");
+        bincode::deserialize_from(reader).expect("Invalid server_set.bin file");
     // setup server with item labels
     server.setup(&item_labels);
 

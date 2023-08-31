@@ -174,7 +174,7 @@ pub fn gen_random_item_labels(count: usize) -> Vec<ItemLabel> {
     let count_per_thread = count / cores;
     let count_last_thread = (count - count_per_thread * cores) + count_per_thread;
     dbg!(cores);
-    // Use up all cores since set size can be really big. For ex, 16M
+    // Use up all cores.
     (0..cores)
         .into_par_iter()
         .flat_map(|core_index| {
@@ -183,7 +183,6 @@ pub fn gen_random_item_labels(count: usize) -> Vec<ItemLabel> {
             } else {
                 count_per_thread
             };
-            dbg!(take);
             thread_rng()
                 .sample_iter(Uniform::new(0, u128::MAX))
                 .take(take)
@@ -241,22 +240,23 @@ pub fn generate_evaluation_key(evaluator: &Evaluator, sk: &SecretKey) -> Evaluat
     EvaluationKey::new(evaluator.params(), &sk, &[0], &[], &[], &mut rng)
 }
 
+/// Generates random ItemLabels and stores them update /data dir. We store the file as .bin since it is the fastest.
 fn generate_random_item_labels_and_store(set_size: usize) {
     let server_set = gen_random_item_labels(set_size);
 
     // create parent directory for data
     std::fs::create_dir_all("./../data").expect("Create data directory failed");
 
-    let mut server_file = std::fs::File::create("./../data/server_set.json")
-        .expect("Failed to create server_set.json");
-    serde_json::to_writer_pretty(&mut server_file, &server_set).unwrap();
+    let mut server_file =
+        std::fs::File::create("./../data/server_set.bin").expect("Failed to create server_set.bin");
+    bincode::serialize_into(server_file, &server_set).unwrap();
 }
 
 fn generate_random_intersection_and_store(intersection_size: usize) {
-    let server_set: Vec<ItemLabel> = serde_json::from_reader(
-        std::fs::File::open("./../data/server_set.json").expect("Failed to open server_set.json"),
+    let server_set: Vec<ItemLabel> = bincode::deserialize_from(
+        std::fs::File::open("./../data/server_set.bin").expect("Failed to open server_set.bin"),
     )
-    .expect("Malformed server_set.json");
+    .expect("Malformed server_set.bin");
 
     let set_size = server_set.len();
 
@@ -273,9 +273,9 @@ fn generate_random_intersection_and_store(intersection_size: usize) {
         }
     }
 
-    let mut client_file = std::fs::File::create("./../data/client_set.json")
-        .expect("Failed to create server_set.json");
-    serde_json::to_writer_pretty(&mut client_file, &client_set).unwrap();
+    let mut client_file =
+        std::fs::File::create("./../data/client_set.bin").expect("Failed to create client_set.bin");
+    bincode::serialize_into(&client_file, &client_set).unwrap();
 }
 
 #[cfg(test)]

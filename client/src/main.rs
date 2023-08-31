@@ -65,10 +65,10 @@ async fn main() {
 
     // read client set
     let file =
-        std::fs::File::open("./../data/client_set.json").expect("Failed to open server_set.json");
+        std::fs::File::open("./../data/client_set.bin").expect("Failed to open client_set.bin");
     let reader = BufReader::new(file);
     let item_labels: Vec<ItemLabel> =
-        serde_json::from_reader(reader).expect("Invalid server_set.json file");
+        bincode::deserialize_from(reader).expect("Invalid client_set.bin file");
 
     // read client's secret key
     let client_secret_key = read_client_secret_key(evaluator.params());
