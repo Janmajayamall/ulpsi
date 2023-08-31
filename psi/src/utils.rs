@@ -1,4 +1,5 @@
 use crate::{
+    db,
     server::{paterson_stockmeyer::PSParams, ItemLabel},
     PsiParams,
 };
@@ -9,32 +10,9 @@ use bfv::{
 use itertools::{izip, Itertools};
 use rand::{distributions::Uniform, thread_rng, Rng};
 use rand_chacha::rand_core::le;
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::collections::HashMap;
 use traits::TryEncodingWithParameters;
-
-pub fn rtg_indices_and_levels(degree: usize) -> (Vec<isize>, Vec<usize>) {
-    let mut rtg_levels = vec![];
-    let mut rtg_indices = vec![];
-
-    let level = 0usize;
-    // inner sum
-    let degree_by_2 = (degree >> 1) as isize;
-    let mut i = 1;
-    while i < degree_by_2 {
-        rtg_indices.push(i);
-        rtg_levels.push(level);
-        i *= 2;
-    }
-    // row swap
-    rtg_indices.push((2 * degree - 1) as isize);
-    rtg_levels.push(level);
-
-    // inner sum covers rot by 1, but just adding it here for levelled implementation
-    rtg_indices.push(1);
-    rtg_levels.push(level);
-
-    (rtg_indices, rtg_levels)
-}
 
 pub fn decrypt_and_print(
     evaluator: &Evaluator,
@@ -191,17 +169,33 @@ pub fn gen_bfv_params(psi_params: &PsiParams) -> BfvParameters {
 }
 
 pub fn gen_random_item_labels(count: usize) -> Vec<ItemLabel> {
-    let rng = thread_rng();
-    rng.clone()
-        .sample_iter(Uniform::new(0, u128::MAX))
-        .take(count * 2)
-        .zip(
-            rng.clone()
+    let cores = rayon::current_num_threads();
+
+    let count_per_thread = count / cores;
+    let count_last_thread = (count - count_per_thread * cores) + count_per_thread;
+    dbg!(cores);
+    // Use up all cores since set size can be really big. For ex, 16M
+    (0..cores)
+        .into_par_iter()
+        .flat_map(|core_index| {
+            let take = if core_index == cores - 1 {
+                count_last_thread
+            } else {
+                count_per_thread
+            };
+            dbg!(take);
+            thread_rng()
                 .sample_iter(Uniform::new(0, u128::MAX))
-                .take(count * 2),
-        )
-        .map(|(item, label)| ItemLabel::new(item, label))
-        .collect_vec()
+                .take(take)
+                .zip(
+                    thread_rng()
+                        .sample_iter(Uniform::new(0, u128::MAX))
+                        .take(take),
+                )
+                .map(|(item, label)| ItemLabel::new(item, label))
+                .collect_vec()
+        })
+        .collect()
 }
 
 pub fn value_to_chunks(value: u128, chunk_count: u32, bits_per_chunk: u32) -> Vec<u32> {
@@ -247,13 +241,26 @@ pub fn generate_evaluation_key(evaluator: &Evaluator, sk: &SecretKey) -> Evaluat
     EvaluationKey::new(evaluator.params(), &sk, &[0], &[], &[], &mut rng)
 }
 
-fn generate_random_item_labels_and_store() {
-    let set_size = 1000;
-    let intersection_size = 100;
+fn generate_random_item_labels_and_store(set_size: usize) {
+    let server_set = gen_random_item_labels(set_size);
+
+    // create parent directory for data
+    std::fs::create_dir_all("./../data").expect("Create data directory failed");
+
+    let mut server_file = std::fs::File::create("./../data/server_set.json")
+        .expect("Failed to create server_set.json");
+    serde_json::to_writer_pretty(&mut server_file, &server_set).unwrap();
+}
+
+fn generate_random_intersection_and_store(intersection_size: usize) {
+    let server_set: Vec<ItemLabel> = serde_json::from_reader(
+        std::fs::File::open("./../data/server_set.json").expect("Failed to open server_set.json"),
+    )
+    .expect("Malformed server_set.json");
+
+    let set_size = server_set.len();
 
     assert!(set_size > intersection_size);
-
-    let server_set = gen_random_item_labels(set_size);
 
     let mut inserted_indices = vec![];
     let mut client_set = vec![];
@@ -265,13 +272,6 @@ fn generate_random_item_labels_and_store() {
             client_set.push(server_set[index].clone());
         }
     }
-
-    // create parent directory for data
-    std::fs::create_dir_all("./../data").expect("Create data directory failed");
-
-    let mut server_file = std::fs::File::create("./../data/server_set.json")
-        .expect("Failed to create server_set.json");
-    serde_json::to_writer_pretty(&mut server_file, &server_set).unwrap();
 
     let mut client_file = std::fs::File::create("./../data/client_set.json")
         .expect("Failed to create server_set.json");
@@ -356,7 +356,8 @@ mod tests {
     }
 
     #[test]
-    fn generate_random_item_labels_and_store_works() {
-        generate_random_item_labels_and_store();
+    fn prepare_random_data_big() {
+        generate_random_item_labels_and_store(16000000);
+        generate_random_intersection_and_store(3000);
     }
 }

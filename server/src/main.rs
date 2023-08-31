@@ -13,9 +13,6 @@ use traits::TryFromWithParameters;
 
 #[tokio::main]
 async fn main() {
-    // Bind the listener to the address
-    let listener = TcpListener::bind("127.0.0.1:6379").await.unwrap();
-
     let psi_params = PsiParams::default();
     let mut server = Server::new(&psi_params);
 
@@ -27,6 +24,9 @@ async fn main() {
         serde_json::from_reader(reader).expect("Invalid server_set.json file");
     // setup server with item labels
     server.setup(&item_labels);
+
+    // Bind the listener to the address
+    let listener = TcpListener::bind("127.0.0.1:6379").await.unwrap();
 
     loop {
         // The second item contains the IP and port of the new connection.

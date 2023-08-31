@@ -11,8 +11,6 @@ use rand_chacha::rand_core::le;
 use server::{
     paterson_stockmeyer::PSParams, CiphertextSlots, EvalPolyDegree, HashTableSize, PsiPlaintext,
 };
-use traits::TryFromWithParameters;
-use utils::{decrypt_and_print, rtg_indices_and_levels};
 
 pub use client::*;
 pub use hash::*;

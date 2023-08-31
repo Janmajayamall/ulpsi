@@ -186,6 +186,7 @@ impl InnerBox {
         );
         let shape = self.item_data.shape();
         self.coefficients_data = Array2::<u32>::zeros((shape[0], shape[1]));
+        // TODO: can we parallelise across each row as well?
         izip!(
             self.coefficients_data.outer_iter_mut(),
             self.item_data.outer_iter(),
@@ -327,7 +328,7 @@ impl BigBox {
         );
     }
 
-    /// Proprocesses each InnerBox
+    /// Preprocesses each InnerBox
     pub fn preprocess(&mut self) {
         self.inner_boxes
             .par_iter_mut()
