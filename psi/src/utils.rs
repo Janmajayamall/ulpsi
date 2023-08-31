@@ -357,7 +357,7 @@ mod tests {
 
     #[test]
     fn prepare_random_data_big() {
-        generate_random_item_labels_and_store(16000000);
+        generate_random_item_labels_and_store(16000);
         generate_random_intersection_and_store(3000);
     }
 }

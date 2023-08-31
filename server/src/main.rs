@@ -31,21 +31,25 @@ async fn main() {
     loop {
         // The second item contains the IP and port of the new connection.
         let (mut socket, _) = listener.accept().await.unwrap();
-        process(socket, &server).await.unwrap();
+        match process(socket, &server).await {
+            Ok(_) => {
+                println!("Request returned successfully!")
+            }
+            Err(e) => {
+                println!("Request failed with error: {e}")
+            }
+        }
     }
 }
 
-pub fn read_client_evaluation_key(server: &Server) -> EvaluationKey {
-    let mut file = std::fs::File::open("./../data/client_evaluation_key.bin")
-        .expect("Failed to open client_evaluation_key.bin");
+pub fn read_client_evaluation_key(server: &Server) -> Result<EvaluationKey> {
+    let mut file = std::fs::File::open("./../data/client_evaluation_key.bin")?;
     let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer)
-        .expect("Unable to read client_evaluation_key.bin");
-    let ek_proto =
-        EvaluationKeyProto::decode(&*buffer).expect("Malformed client_evalaution_key.bin");
+    file.read_to_end(&mut buffer)?;
+    let ek_proto = EvaluationKeyProto::decode(&*buffer)?;
     let evaluation_key =
         EvaluationKey::try_from_with_parameters(&ek_proto, server.evaluator().params());
-    evaluation_key
+    Ok(evaluation_key)
 }
 
 async fn process(mut socket: TcpStream, server: &Server) -> Result<()> {
@@ -61,7 +65,7 @@ async fn process(mut socket: TcpStream, server: &Server) -> Result<()> {
     println!("Deserialize Query");
 
     // read client's evaluation key
-    let client_evaluation_key = read_client_evaluation_key(server);
+    let client_evaluation_key = read_client_evaluation_key(server)?;
     println!("Deserialize Client Evaluation Key");
 
     // Start processing Query

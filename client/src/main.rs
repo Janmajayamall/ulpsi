@@ -57,8 +57,6 @@ pub fn read_client_secret_key(bfv_params: &BfvParameters) -> SecretKey {
 
 #[tokio::main]
 async fn main() {
-    let mut stream = TcpStream::connect("127.0.0.1:6379").await.unwrap();
-
     let psi_params = PsiParams::default();
     let bfv_params = gen_bfv_params(&psi_params);
     let evaluator = Evaluator::new(bfv_params);
@@ -94,6 +92,8 @@ async fn main() {
 
     // send request
     println!("Sending query...");
+    let mut stream = TcpStream::connect("127.0.0.1:6379").await.unwrap();
+
     stream
         .write_all(&mut serialized_query)
         .await
