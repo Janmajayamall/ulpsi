@@ -12,10 +12,12 @@ fn main() {
     let psi_params = PsiParams::default();
     let mut server = Server::new(&psi_params);
 
-    let set_size = 10;
+    let set_size = 100;
     let raw_item_labels = gen_random_item_labels(set_size);
 
     server.setup(&raw_item_labels);
+
+    server.print_diagnosis();
 
     // client chooses random values from raw_item_labels and constructs query set
     let mut expected_item_label_map = HashMap::new();

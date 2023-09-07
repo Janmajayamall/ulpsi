@@ -43,7 +43,7 @@ pub struct PsiParams {
 impl Default for PsiParams {
     fn default() -> Self {
         let ps_params = PSParams::new(44, 1304);
-        let psi_pt = PsiPlaintext::new(128, 16, 65537);
+        let psi_pt = PsiPlaintext::new(256, 16, 65537);
 
         PsiParams {
             no_of_hash_tables: 1,

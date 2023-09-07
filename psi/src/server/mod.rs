@@ -159,6 +159,10 @@ impl Server {
         self.db
             .handle_query(query, &self.evaluator, ek, &self.powers_dag)
     }
+
+    pub fn print_diagnosis(&self) {
+        self.db.print_diagnosis();
+    }
 }
 #[cfg(test)]
 mod tests {

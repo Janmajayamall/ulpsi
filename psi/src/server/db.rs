@@ -119,7 +119,7 @@ impl InnerBox {
                 item_label.get_chunk_at_index((i - real_row) as u32, &self.psi_params.psi_pt);
 
             if self.item_data_hash_set.contains(&(i, item_chunk)) {
-                // println!("[IB] Found chunk collision for ItemLabel. item: {}, chunk: {}, ib_row: {row}, real_row:{i}", item_label.item(), item_chunk);
+                println!("[IB] Found chunk collision for ItemLabel. item: {}, chunk: {}, ib_row: {row}, real_row:{i}", item_label.item(), item_chunk);
                 can_insert = false;
                 break;
             }
@@ -170,12 +170,13 @@ impl InnerBox {
     fn generate_coefficients(&mut self) {
         println!(
             "
-            ########
+            --------------------------------------
             [IB] Generating Coefficients for IB with InnerBoxRows: {},
-            No. of polynomial to interpolate: {}
+            No. of polynomials with degree {} interpolate: {}
 
             ",
             self.ht_rows.len(),
+            self.item_data.shape()[1],
             self.item_data.shape()[0]
         );
         let shape = self.item_data.shape();
@@ -207,12 +208,12 @@ impl InnerBox {
             coeffs.as_slice_mut().unwrap()[..cols_occupied].copy_from_slice(&c);
         });
 
-        println!(
-            "
-            End generating coefficients
-            ########
-            ",
-        )
+        // println!(
+        //     "
+        //     End generating coefficients
+        //     ########
+        //     ",
+        // )
     }
 
     fn evaluate_ps_on_query_ct(
@@ -248,10 +249,11 @@ pub struct BigBox {
     inner_boxes: Vec<Vec<InnerBox>>,
     psi_params: PsiParams,
     inner_box_rows: u32,
+    id: usize,
 }
 
 impl BigBox {
-    pub fn new(psi_params: &PsiParams) -> BigBox {
+    pub fn new(psi_params: &PsiParams, id: usize) -> BigBox {
         // rows in single inner box
 
         let inner_box_rows = InnerBox::max_rows(&psi_params.psi_pt, &psi_params.ct_slots);
@@ -267,6 +269,7 @@ impl BigBox {
             inner_boxes,
             psi_params: psi_params.clone(),
             inner_box_rows,
+            id,
         }
     }
 
@@ -284,13 +287,14 @@ impl BigBox {
         let segment_index = self.ht_index_to_segment_index(ht_index);
         let inner_box_row = self.ht_index_to_inner_box_row(ht_index);
 
-        // println!(
-        //     "[BB] Inserting item: {} at ht_index: {}; segment_index: {}, ib_row: {}",
-        //     item_label.label(),
-        //     ht_index,
-        //     segment_index,
-        //     inner_box_row
-        // );
+        println!(
+            "[BB {}] Inserting item: {} at ht_index: {}; segment_index: {}, ib_row: {}",
+            self.id,
+            item_label.label(),
+            ht_index,
+            segment_index,
+            inner_box_row
+        );
 
         // Find the first InnerBox in segment that has free space at row
         let mut inner_box_index = None;
@@ -301,9 +305,11 @@ impl BigBox {
             }
         }
         if inner_box_index.is_none() {
-            // println!(
-            //     "[BB] All InnerBoxes at sgement {segment_index} at row {inner_box_row} are full. Creating new IB"
-            // );
+            println!(
+                "[BB {}] All InnerBoxes at segment {segment_index} at row {inner_box_row} are full. Creating new IB"
+                ,
+                self.id
+            );
             // None of the inner boxes in segment have space available at row. Create a new one.
             self.inner_boxes[segment_index].push(InnerBox::new(&self.psi_params));
             // set the index to newly inserted InnerBox
@@ -318,10 +324,11 @@ impl BigBox {
             &self.psi_params.psi_pt,
         );
 
-        // println!(
-        //     "[BB] Item {} for ht_index:{ht_index} inserted; segment {segment_index}, inner_box_index {inner_box_index}, ib_row: {inner_box_row}",
-        //     item_label.item()
-        // );
+        println!(
+            "[BB {}] Item {} for ht_index:{ht_index} inserted; segment {segment_index}, inner_box_index {inner_box_index}, ib_row: {inner_box_row}",
+            self.id,
+            item_label.item()
+        );
     }
 
     /// Preprocesses each InnerBox
@@ -331,7 +338,10 @@ impl BigBox {
             .enumerate()
             .for_each(|(s_i, segment)| {
                 segment.par_iter_mut().for_each(|ib| {
-                    println!("[BB] Preprocessing IB from segment {s_i} at index ?");
+                    println!(
+                        "[BB {}] Preprocessing IB from segment {s_i} at index ?",
+                        self.id,
+                    );
                     ib.generate_coefficients();
                 });
             });
@@ -383,6 +393,57 @@ impl BigBox {
 
         HashTableQueryResponse(ht_response)
     }
+
+    pub fn print_diagnosis(&self) {
+        let single_ib = &self.inner_boxes[0][0];
+
+        println!(
+            "
+            ------------------------------------------
+            BigBox Id : {}
+            ",
+            self.id
+        );
+        println!(
+            "
+            No. of Segments: {}
+            ",
+            self.inner_boxes.len()
+        );
+        println!(
+            "
+                No. of HashTable rows per Segment (ie InnerBox): {}
+                
+            ",
+            single_ib.ht_rows.len(),
+        );
+        println!(
+            "
+                InnerBox
+                    Max no. of columns (ie data points) per InnerBox: {},
+                    No. of real rows per InnerBox: {}
+
+            ",
+            single_ib.item_data.shape()[1],
+            single_ib.item_data.shape()[0],
+        );
+        self.inner_boxes
+            .iter()
+            .enumerate()
+            .for_each(|(segment_index, inner_boxes)| {
+                println!(
+                    "
+                        Segment Index {segment_index} InnerBoxes count: {}
+                    ",
+                    inner_boxes.len()
+                );
+            });
+        println!(
+            "
+            ------------------------------------------
+            "
+        );
+    }
 }
 
 pub struct Db {
@@ -397,7 +458,7 @@ impl Db {
         let cuckoo = Cuckoo::new(psi_params.no_of_hash_tables, *psi_params.ht_size);
         let big_boxes = (0..psi_params.no_of_hash_tables)
             .into_iter()
-            .map(|i| BigBox::new(&psi_params))
+            .map(|i| BigBox::new(&psi_params, i as usize))
             .collect_vec();
 
         Db {
@@ -456,6 +517,12 @@ impl Db {
             .collect_into_vec(&mut ht_responses);
 
         QueryResponse(ht_responses)
+    }
+
+    pub fn print_diagnosis(&self) {
+        self.big_boxes.iter().for_each(|bb| {
+            bb.print_diagnosis();
+        });
     }
 }
 
