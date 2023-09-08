@@ -218,14 +218,14 @@ impl Server {
     }
 
     pub fn setup(&mut self, item_labels: &[ItemLabel]) {
-        item_labels.iter().for_each(|(i)| {
-            if self.db.insert(i) {
-                // println!("Item {} inserted", i.item());
-            } else {
-                println!("Item {} insert failed. Duplicate Item.", i.item());
-            }
-        });
-
+        // item_labels.iter().for_each(|(i)| {
+        //     if self.db.insert(i) {
+        //         // println!("Item {} inserted", i.item());
+        //     } else {
+        //         println!("Item {} insert failed. Duplicate Item.", i.item());
+        //     }
+        // });
+        self.db.insert_many(item_labels);
         self.db.preprocess();
     }
 

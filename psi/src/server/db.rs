@@ -1,3 +1,4 @@
+use rand_chacha::rand_core::le;
 use rayon::{prelude::*, slice::ParallelSlice};
 
 use super::*;
@@ -221,6 +222,7 @@ impl InnerBox {
         ps_powers: &HashMap<usize, Ciphertext>,
         evalutor: &Evaluator,
         ek: &EvaluationKey,
+        level: usize,
     ) -> Ciphertext {
         let mut res_ct = ps_evaluate_poly(
             evalutor,
@@ -228,7 +230,7 @@ impl InnerBox {
             &ps_powers,
             &self.psi_params.ps_params,
             &self.coefficients_data,
-            0,
+            level,
         );
 
         //TODO: evalutor.mod_down_level(&mut res_ct, 0);
@@ -281,6 +283,16 @@ impl BigBox {
     // Maps ht_index to row of InnerBox in a segment
     fn ht_index_to_inner_box_row(&self, ht_index: usize) -> usize {
         ht_index % self.inner_box_rows as usize
+    }
+
+    pub fn insert_many(
+        &mut self,
+        item_labels: &[ItemLabel],
+        item_labels_table_indices: &[Vec<u32>],
+    ) {
+        izip!(item_labels.iter(), item_labels_table_indices.iter()).for_each(|(il, tb_indices)| {
+            self.insert(il, tb_indices[self.id] as usize);
+        });
     }
 
     pub fn insert(&mut self, item_label: &ItemLabel, ht_index: usize) {
@@ -337,13 +349,16 @@ impl BigBox {
             .par_iter_mut()
             .enumerate()
             .for_each(|(s_i, segment)| {
-                segment.par_iter_mut().for_each(|ib| {
-                    println!(
-                        "[BB {}] Preprocessing IB from segment {s_i} at index ?",
-                        self.id,
-                    );
-                    ib.generate_coefficients();
-                });
+                segment
+                    .par_iter_mut()
+                    .enumerate()
+                    .for_each(|(ib_index, ib)| {
+                        println!(
+                            "[BB {}] Preprocessing IB from segment {s_i} at index {ib_index}",
+                            self.id,
+                        );
+                        ib.generate_coefficients();
+                    });
             });
     }
 
@@ -370,7 +385,7 @@ impl BigBox {
             .zip(self.inner_boxes.par_iter())
             .map(|(query_ct_powers, segment)| {
                 // calculate PS powers from source powers
-                // TODO: parallelizing `calculate_ps_powers_with_dag` can give speed up since it bottlenecks further multithreading. Usually there will be far less segments to process in parallel than available threads (with default parameters segments = 4).
+                // TODO: parallelizing `calculate_ps_powers_with_dag` can give speed up since it bottlenecks further multithreading. Usually there will be far less segments to process in parallel than available threads (with default parameters segments = 8).
                 let ps_target_powers = calculate_ps_powers_with_dag(
                     evaluator,
                     ek,
@@ -381,10 +396,12 @@ impl BigBox {
                     &self.psi_params.ps_params,
                 );
 
+                // NOTE: We can level down here to improve the runtime for polynomial evaluation without any loss of correctness. But there exists a trade-off since levelling down will require
+                // relinerization key for level 1. So level down only when run time of polynomia l evaluation is the bottleneck.
                 let mut ib_responses = Vec::new();
                 segment
                     .par_iter()
-                    .map(|ib| ib.evaluate_ps_on_query_ct(&ps_target_powers, evaluator, ek))
+                    .map(|ib| ib.evaluate_ps_on_query_ct(&ps_target_powers, evaluator, ek, 0))
                     .collect_into_vec(&mut ib_responses);
 
                 ib_responses
@@ -469,6 +486,29 @@ impl Db {
         }
     }
 
+    /// Inserts many ItemLabels. Uses all the cores to reduce insert time
+    pub fn insert_many(&mut self, item_labels: &[ItemLabel]) {
+        // TODO: check that there are no repeated items
+
+        // hash using all cores
+        let cores = rayon::current_num_threads();
+        let chunk_size = item_labels.len() / cores;
+        let item_labels_table_indices: Vec<Vec<u32>> = item_labels
+            .par_chunks(chunk_size)
+            .flat_map(|chunk_item_labels| {
+                chunk_item_labels
+                    .iter()
+                    .map(|il| self.cuckoo.table_indices(il.item()))
+                    .collect_vec()
+            })
+            .collect();
+
+        // insert ItemLabels in BigBox in parallel
+        self.big_boxes.par_iter_mut().for_each(|(bb)| {
+            bb.insert_many(item_labels, &item_labels_table_indices);
+        });
+    }
+
     pub fn insert(&mut self, item_label: &ItemLabel) -> bool {
         // It's Private SET intersection. You cannot insert same item twice!
         if self.item_set_cache.contains(item_label.item()) {
@@ -534,8 +574,5 @@ mod tests {
     fn db_works() {
         let psi_params = PsiParams::default();
         let mut server = Server::new(&psi_params);
-
-        let values = vec![(1231, 312313)];
-        // server.setup(&values);
     }
 }

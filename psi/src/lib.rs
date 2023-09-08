@@ -15,14 +15,14 @@ use server::{
 pub use client::*;
 pub use hash::*;
 pub use poly_interpolate::*;
-pub use serlize::*;
+pub use serialize::*;
 pub use server::*;
 pub use utils::*;
 
 mod client;
 mod hash;
 mod poly_interpolate;
-mod serlize;
+mod serialize;
 mod server;
 mod utils;
 
@@ -33,6 +33,7 @@ pub struct PsiParams {
     pub(crate) ct_slots: CiphertextSlots,
     pub(crate) eval_degree: EvalPolyDegree,
     pub(crate) bfv_moduli: Vec<usize>,
+    pub(crate) hybrid_ksk_moduli: [usize; 3],
     pub(crate) bfv_degree: usize,
     pub(crate) bfv_plaintext: u64,
     pub(crate) psi_pt: PsiPlaintext,
@@ -50,7 +51,8 @@ impl Default for PsiParams {
             ht_size: HashTableSize(1 << 12),
             ct_slots: CiphertextSlots(1 << 13),
             eval_degree: ps_params.eval_degree(),
-            bfv_moduli: vec![50, 50, 50],
+            bfv_moduli: vec![50, 50, 45],
+            hybrid_ksk_moduli: [50, 50, 45],
             bfv_degree: 1 << 13,
             bfv_plaintext: 65537,
             psi_pt,

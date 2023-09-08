@@ -411,7 +411,7 @@ mod tests {
 
     use crate::{
         random_u256,
-        serlize::{deserialize_query, serialize_query},
+        serialize::{deserialize_query, serialize_query},
         utils::gen_bfv_params,
     };
 

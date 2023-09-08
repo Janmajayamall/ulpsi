@@ -153,7 +153,13 @@ pub fn calculate_ps_powers_with_dag(
 
 pub fn bfv_setup_test() -> (Evaluator, SecretKey) {
     let mut rng = thread_rng();
-    let params = BfvParameters::default(3, 1 << 13);
+    let psi_params = PsiParams::default();
+    let mut params = BfvParameters::new(
+        &psi_params.bfv_moduli,
+        psi_params.bfv_plaintext,
+        psi_params.bfv_degree,
+    );
+    params.enable_hybrid_key_switching(&psi_params.hybrid_ksk_moduli);
     let sk = SecretKey::random_with_params(&params, &mut rng);
 
     (Evaluator::new(params), sk)

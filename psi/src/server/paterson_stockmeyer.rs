@@ -148,12 +148,13 @@ mod tests {
     #[test]
     fn ps_works() {
         let mut rng = thread_rng();
-        let source_powers = vec![1, 3, 11, 18, 45, 225];
-        let ps_params = PSParams::new(44, 1304);
-        let modq = 65537;
+        let psi_params = PsiParams::default();
+        let source_powers = psi_params.source_powers.clone();
+        let ps_params = psi_params.ps_params.clone();
+        let modq = psi_params.bfv_plaintext as u32;
 
         let (evaluator, sk) = bfv_setup_test();
-        let ek = EvaluationKey::new(evaluator.params(), &sk, &[0], &[], &[], &mut rng);
+        let ek = EvaluationKey::new(evaluator.params(), &sk, &[0, 1], &[], &[], &mut rng);
 
         // Interpolate a polynomial
         let mut rng = thread_rng();
@@ -203,7 +204,7 @@ mod tests {
 
         // get target powers for PS on server
         let dag = construct_dag(&source_powers, ps_params.powers());
-        let target_power_cts = calculate_ps_powers_with_dag(
+        let mut target_power_cts = calculate_ps_powers_with_dag(
             &evaluator,
             &ek,
             &input_source_powers_cts,
@@ -213,6 +214,12 @@ mod tests {
             &ps_params,
         );
 
+        target_power_cts.iter_mut().for_each(|mut c| {
+            dbg!(evaluator.measure_noise(&sk, c.1));
+            evaluator.mod_down_next(&mut c.1);
+            dbg!(evaluator.measure_noise(&sk, c.1));
+        });
+
         // Evaluate it homomorphically
         let evaluated_ct = ps_evaluate_poly(
             &evaluator,
@@ -220,7 +227,7 @@ mod tests {
             &target_power_cts,
             &ps_params,
             &coefficients_2d,
-            0,
+            1,
         );
 
         dbg!(evaluator.measure_noise(&sk, &evaluated_ct));
