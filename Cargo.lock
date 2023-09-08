@@ -64,7 +64,7 @@ name = "bfv"
 version = "0.1.0"
 dependencies = [
  "concrete-ntt",
- "crypto-bigint",
+ "crypto-bigint 0.4.9",
  "itertools",
  "ndarray",
  "num-bigint",
@@ -144,6 +144,7 @@ version = "0.1.0"
 dependencies = [
  "bfv",
  "bincode",
+ "crypto-bigint 0.5.3",
  "prost",
  "psi",
  "rand",
@@ -210,6 +211,16 @@ name = "crypto-bigint"
 version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef2b4b23cddf68b89b8f8069890e8c270d54e2d5fe1b143820234805e4cb17ef"
+dependencies = [
+ "rand_core",
+ "subtle",
+]
+
+[[package]]
+name = "crypto-bigint"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "740fe28e594155f10cfc383984cbefd529d7396050557148f79cb0f621204124"
 dependencies = [
  "rand_core",
  "subtle",
@@ -653,6 +664,7 @@ version = "0.1.0"
 dependencies = [
  "bfv",
  "bincode",
+ "crypto-bigint 0.5.3",
  "itertools",
  "ndarray",
  "prost",
@@ -878,6 +890,7 @@ version = "0.1.0"
 dependencies = [
  "bfv",
  "bincode",
+ "crypto-bigint 0.5.3",
  "prost",
  "psi",
  "rand",

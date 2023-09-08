@@ -23,10 +23,10 @@ fn main() {
     let mut expected_item_label_map = HashMap::new();
     let query_set = raw_item_labels
         .iter()
-        .take(1)
+        .take(10)
         .map(|il| {
             expected_item_label_map.insert(il.item(), il.label());
-            il.item()
+            il.item().clone()
         })
         .collect_vec();
 

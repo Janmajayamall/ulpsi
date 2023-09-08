@@ -14,3 +14,4 @@ bfv = {path = "./../../bfv/bfv", features = ["serialize"]}
 traits = {path = "./../../bfv/traits"}
 prost = "0.11.9"
 bincode = "1.3.3"
+crypto-bigint = "0.5.3"

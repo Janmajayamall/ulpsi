@@ -1,12 +1,13 @@
 use crate::{
-    db,
+    bytes_to_u32, db, random_u256,
     server::{paterson_stockmeyer::PSParams, ItemLabel},
     PsiParams,
 };
 use bfv::{
-    BfvParameters, Ciphertext, Encoding, EvaluationKey, Evaluator, Plaintext, PolyCache, PolyType,
+    BfvParameters, Ciphertext, EvaluationKey, Evaluator, Plaintext, PolyCache, PolyType,
     Representation, SecretKey,
 };
+use crypto_bigint::{Encoding, U256};
 use itertools::{izip, Itertools};
 use rand::{distributions::Uniform, thread_rng, Rng};
 use rand_chacha::rand_core::le;
@@ -23,7 +24,7 @@ pub fn decrypt_and_print(
     m_end: usize,
 ) {
     let noise = evaluator.measure_noise(sk, ct);
-    let m = &evaluator.plaintext_decode(&evaluator.decrypt(sk, ct), Encoding::default())
+    let m = &evaluator.plaintext_decode(&evaluator.decrypt(sk, ct), bfv::Encoding::default())
         [m_start..m_end];
     println!("{tag} - Noise: {noise}; m[{m_start}..{m_end}]: {:?}", m);
 }
@@ -183,41 +184,48 @@ pub fn gen_random_item_labels(count: usize) -> Vec<ItemLabel> {
             } else {
                 count_per_thread
             };
-            thread_rng()
-                .sample_iter(Uniform::new(0, u128::MAX))
-                .take(take)
-                .zip(
-                    thread_rng()
-                        .sample_iter(Uniform::new(0, u128::MAX))
-                        .take(take),
-                )
-                .map(|(item, label)| ItemLabel::new(item, label))
+            let mut rng = thread_rng();
+            (0..take)
+                .into_iter()
+                .map(|_| {
+                    let item = random_u256(&mut rng);
+                    let label = random_u256(&mut rng);
+                    ItemLabel::new(item, label)
+                })
                 .collect_vec()
         })
         .collect()
 }
 
-pub fn value_to_chunks(value: u128, chunk_count: u32, bits_per_chunk: u32) -> Vec<u32> {
-    let mask = (1 << bits_per_chunk) - 1;
+pub fn value_to_chunks(value: &U256, no_of_chunks: u32, bytes_per_chunk: u32) -> Vec<u32> {
+    let value_bytes = value.to_le_bytes();
 
     let mut chunks = vec![];
-    for i in 0..chunk_count {
-        chunks.push(((value >> (i * bits_per_chunk)) & mask) as u32)
+    for chunk_index in 0..no_of_chunks {
+        let chunk_start = (chunk_index * bytes_per_chunk) as usize;
+        let bytes = &value_bytes[(chunk_start..chunk_start + bytes_per_chunk as usize)];
+        chunks.push(bytes_to_u32(bytes));
     }
+
     chunks
 }
 
 /// Chunks must be in little endian
-pub fn chunks_to_value(chunks: &[u32], total_bits: u32, bits_per_chunk: u32) -> u128 {
-    assert!(chunks.len() == (total_bits / bits_per_chunk) as usize);
+pub fn chunks_to_value(chunks: &[u32], total_bytes: u32, bytes_per_chunk: u32) -> U256 {
+    assert!(chunks.len() == (total_bytes / bytes_per_chunk) as usize);
 
-    let mut value = 0u128;
+    let mut u256_bytes = [0u8; 32];
 
-    chunks.iter().enumerate().for_each(|(index, c)| {
-        value += (*c as u128) << (index * bits_per_chunk as usize);
+    let mut byte_index = 0;
+    chunks.iter().enumerate().for_each(|(_, c)| {
+        (0..bytes_per_chunk).into_iter().for_each(|index| {
+            // extract byte
+            u256_bytes[byte_index] = ((c >> (index * 8)) & 255) as u8;
+            byte_index += 1;
+        });
     });
 
-    value
+    U256::from_le_bytes(u256_bytes)
 }
 
 // Measures time in ms for enclosed code block.
@@ -244,7 +252,7 @@ pub fn generate_evaluation_key(evaluator: &Evaluator, sk: &SecretKey) -> Evaluat
 fn generate_random_item_labels_and_store(set_size: usize) {
     let server_set = gen_random_item_labels(set_size);
 
-    // create parent directory for data
+    // // create parent directory for data
     std::fs::create_dir_all("./../data").expect("Create data directory failed");
 
     let mut server_file =
@@ -322,7 +330,7 @@ mod tests {
                 let pt = Plaintext::try_encoding_with_parameters(
                     i.as_slice(),
                     evaluator.params(),
-                    Encoding::simd(0, PolyCache::None),
+                    bfv::Encoding::simd(0, PolyCache::None),
                 );
                 evaluator.encrypt(&sk, &pt, &mut rng)
             })
@@ -342,8 +350,8 @@ mod tests {
         ps_params.powers().iter().for_each(|power| {
             let power_ct = target_power_cts.get(power).unwrap();
             // dbg!(evaluator.measure_noise(&sk, &power_ct));
-            let m =
-                evaluator.plaintext_decode(&evaluator.decrypt(&sk, power_ct), Encoding::default());
+            let m = evaluator
+                .plaintext_decode(&evaluator.decrypt(&sk, power_ct), bfv::Encoding::default());
 
             // calculate expected target power of input_value
             let expected_m = evaluator
@@ -357,7 +365,7 @@ mod tests {
 
     #[test]
     fn prepare_random_data_big() {
-        generate_random_item_labels_and_store(16000);
+        generate_random_item_labels_and_store(16000000);
         generate_random_intersection_and_store(3000);
     }
 }

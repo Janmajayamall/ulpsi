@@ -1,4 +1,5 @@
 use bfv::{BfvParameters, EvaluationKeyProto, Evaluator, SecretKey, SecretKeyProto};
+use crypto_bigint::U256;
 use prost::Message;
 use psi::{
     construct_query, db, deserialize_query_response, gen_bfv_params, generate_evaluation_key,
@@ -75,8 +76,8 @@ async fn main() {
     let mut rng = thread_rng();
     let query_set = item_labels
         .iter()
-        .map(|il| il.item())
-        .collect::<Vec<u128>>();
+        .map(|il| il.item().clone())
+        .collect::<Vec<U256>>();
     let query_state = construct_query(
         &query_set,
         &psi_params,

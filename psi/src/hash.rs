@@ -1,8 +1,10 @@
+use crypto_bigint::{Encoding, U256};
 use itertools::Itertools;
+use rand::{distributions::Uniform, CryptoRng, Rng};
 use ring::digest::{self, Digest};
 use std::collections::HashMap;
 
-fn sha256(item: u128) -> Digest {
+fn sha256(item: &U256) -> Digest {
     digest::digest(&digest::SHA256, &item.to_le_bytes())
 }
 
@@ -21,7 +23,7 @@ impl Cuckoo {
     }
 
     /// Hashes the data and return indices in each hash table
-    pub fn table_indices(&self, data: u128) -> Vec<u32> {
+    pub fn table_indices(&self, data: &U256) -> Vec<u32> {
         let digest = sha256(data);
 
         // We divide the digest in chunks of 32 bits and view each chunk as ouput from different hash functions
@@ -43,14 +45,14 @@ impl Cuckoo {
 }
 
 #[derive(Clone, Debug)]
-pub struct HashTableEntry(u128, u8);
+pub struct HashTableEntry(U256, u8);
 impl HashTableEntry {
-    pub fn new(value: u128) -> HashTableEntry {
+    pub fn new(value: U256) -> HashTableEntry {
         HashTableEntry(value, 0)
     }
 
-    pub fn entry_value(&self) -> u128 {
-        self.0
+    pub fn entry_value(&self) -> &U256 {
+        &self.0
     }
 
     pub fn hash_index(&self) -> usize {
@@ -103,6 +105,12 @@ pub fn construct_hash_tables(
     (hash_tables, stack)
 }
 
+pub fn random_u256<R: Rng + CryptoRng>(rng: &mut R) -> U256 {
+    let mut bytes = [0u8; 32];
+    rng.fill_bytes(&mut bytes);
+    U256::from_le_bytes(bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::{HashMap, HashSet};
@@ -124,7 +132,7 @@ mod tests {
 
         let mut queue = vec![];
         for i in 0..3500 {
-            let data: u128 = rng.gen();
+            let data = random_u256(&mut rng);
             queue.push(HashTableEntry(data, 0));
         }
 

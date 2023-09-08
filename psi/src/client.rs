@@ -1,6 +1,7 @@
 use std::{collections::HashMap, ops::Deref};
 
 use bfv::{Ciphertext, Encoding, Evaluator, Modulus, Plaintext, SecretKey};
+use crypto_bigint::U256;
 use itertools::{izip, Itertools};
 use rand::{CryptoRng, Rng, RngCore};
 use traits::{TryDecodingWithParameters, TryEncodingWithParameters};
@@ -14,16 +15,16 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct PotentialResponseLabels {
-    pub(crate) item: u128,
-    pub(crate) labels: Vec<u128>,
+    pub(crate) item: U256,
+    pub(crate) labels: Vec<U256>,
 }
 
 impl PotentialResponseLabels {
-    pub fn item(&self) -> u128 {
-        self.item
+    pub fn item(&self) -> &U256 {
+        &self.item
     }
 
-    pub fn labels(&self) -> &[u128] {
+    pub fn labels(&self) -> &[U256] {
         &self.labels
     }
 }
@@ -69,7 +70,7 @@ impl InnerBoxQuery {
     }
 
     pub fn value_chunks(&self, value: u128) -> Vec<u32> {
-        let bits = self.psi_pt.chunk_bits();
+        let bits = self.psi_pt.bytes_per_chunk();
         let mask = (1 << bits) - 1;
 
         let mut chunks = vec![];
@@ -85,7 +86,7 @@ impl InnerBoxQuery {
         let value_chunks = value_to_chunks(
             entry.entry_value(),
             self.psi_pt.slots_required(),
-            self.psi_pt.chunk_bits(),
+            self.psi_pt.bytes_per_chunk(),
         );
         for i in real_row..(real_row + self.psi_pt.slots_required()) {
             self.data[i as usize] = value_chunks[(i - real_row) as usize];
@@ -100,7 +101,7 @@ impl InnerBoxQuery {
         psi_pt: &PsiPlaintext,
         expected_row: u32,
         segment_response: &Vec<Vec<u32>>,
-    ) -> Vec<u128> {
+    ) -> Vec<U256> {
         let real_row = expected_row * psi_pt.slots_required();
 
         segment_response
@@ -110,8 +111,12 @@ impl InnerBoxQuery {
                 for i in real_row..(real_row + psi_pt.slots_required()) {
                     res_value_chunks.push(res[i as usize]);
                 }
-                let res_value =
-                    chunks_to_value(&res_value_chunks, psi_pt.psi_pt_bits, psi_pt.chunk_bits());
+
+                let res_value = chunks_to_value(
+                    &res_value_chunks,
+                    psi_pt.psi_pt_bytes,
+                    psi_pt.bytes_per_chunk(),
+                );
                 res_value
             })
             .collect_vec()
@@ -272,7 +277,7 @@ impl HashTableQuery {
                     );
 
                     response.push(PotentialResponseLabels {
-                        item: entry.entry_value(),
+                        item: entry.entry_value().clone(),
                         labels: potential_responses,
                     });
                 }
@@ -314,7 +319,7 @@ impl QueryState {
 }
 
 pub fn construct_query<R: RngCore + CryptoRng>(
-    query_set: &[u128],
+    query_set: &[U256],
     psi_params: &PsiParams,
     evaluator: &Evaluator,
     sk: &SecretKey,
@@ -405,6 +410,7 @@ mod tests {
     use rand::{distributions::Uniform, thread_rng};
 
     use crate::{
+        random_u256,
         serlize::{deserialize_query, serialize_query},
         utils::gen_bfv_params,
     };
@@ -420,10 +426,9 @@ mod tests {
         let evaluator = Evaluator::new(bfv_params);
         let sk = SecretKey::random_with_params(evaluator.params(), &mut rng);
 
-        let query_set = rng
-            .clone()
-            .sample_iter(Uniform::new(0, u128::MAX))
-            .take(100)
+        let query_set = (0..100)
+            .into_iter()
+            .map(|_| random_u256(&mut rng))
             .collect_vec();
 
         let query_response = construct_query(&query_set, &psi_params, &evaluator, &sk, &mut rng);
@@ -438,10 +443,9 @@ mod tests {
         let evaluator = Evaluator::new(bfv_params);
         let sk = SecretKey::random_with_params(evaluator.params(), &mut rng);
 
-        let query_set = rng
-            .clone()
-            .sample_iter(Uniform::new(0, u128::MAX))
-            .take(100)
+        let query_set = (0..100)
+            .into_iter()
+            .map(|_| random_u256(&mut rng))
             .collect_vec();
 
         let query_state = construct_query(&query_set, &psi_params, &evaluator, &sk, &mut rng);

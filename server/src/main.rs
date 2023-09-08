@@ -24,6 +24,7 @@ async fn main() {
         bincode::deserialize_from(reader).expect("Invalid server_set.bin file");
     // setup server with item labels
     server.setup(&item_labels);
+    server.print_diagnosis();
 
     // Bind the listener to the address
     let listener = TcpListener::bind("127.0.0.1:6379").await.unwrap();

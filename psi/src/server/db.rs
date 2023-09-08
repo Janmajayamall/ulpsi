@@ -85,10 +85,10 @@ impl InnerBox {
             psi_params.eval_degree.inner_box_columns() as usize,
         ));
 
-        println!(
-            "Created InnerBox with {row_count} rows and {} cols",
-            psi_params.eval_degree.inner_box_columns()
-        );
+        // println!(
+        //     "Created InnerBox with {row_count} rows and {} cols",
+        //     psi_params.eval_degree.inner_box_columns()
+        // );
 
         InnerBox {
             coefficients_data: Array2::zeros((0, 0)),
@@ -119,7 +119,7 @@ impl InnerBox {
                 item_label.get_chunk_at_index((i - real_row) as u32, &self.psi_params.psi_pt);
 
             if self.item_data_hash_set.contains(&(i, item_chunk)) {
-                println!("[IB] Found chunk collision for ItemLabel. item: {}, chunk: {}, ib_row: {row}, real_row:{i}", item_label.item(), item_chunk);
+                // println!("[IB] Found chunk collision for ItemLabel. item: {}, chunk: {}, ib_row: {row}, real_row:{i}", item_label.item(), item_chunk);
                 can_insert = false;
                 break;
             }
@@ -139,7 +139,7 @@ impl InnerBox {
             let (item_chunk, label_chunk) = item_label.get_chunk_at_index(chunk_index, psi_pt);
 
             // println!(
-            //     "[IB] Inserting ItemLabel - item:{}, chunk_index:{chunk_index}, chunk:{item_chunk}, InnerBox Row:{row}, Real Row:{i}",
+            //     "[IB] Inserting ItemLabel - item:{}, chunk_index:{chunk_index}, chunk:{item_chunk}, label:{label_chunk}, InnerBox Row:{row}, Real Row:{i}",
             //     item_label.item(),
             // );
 
@@ -287,14 +287,14 @@ impl BigBox {
         let segment_index = self.ht_index_to_segment_index(ht_index);
         let inner_box_row = self.ht_index_to_inner_box_row(ht_index);
 
-        println!(
-            "[BB {}] Inserting item: {} at ht_index: {}; segment_index: {}, ib_row: {}",
-            self.id,
-            item_label.label(),
-            ht_index,
-            segment_index,
-            inner_box_row
-        );
+        // println!(
+        //     "[BB {}] Inserting item: {} at ht_index: {}; segment_index: {}, ib_row: {}",
+        //     self.id,
+        //     item_label.label(),
+        //     ht_index,
+        //     segment_index,
+        //     inner_box_row
+        // );
 
         // Find the first InnerBox in segment that has free space at row
         let mut inner_box_index = None;
@@ -305,11 +305,11 @@ impl BigBox {
             }
         }
         if inner_box_index.is_none() {
-            println!(
-                "[BB {}] All InnerBoxes at segment {segment_index} at row {inner_box_row} are full. Creating new IB"
-                ,
-                self.id
-            );
+            // println!(
+            //     "[BB {}] All InnerBoxes at segment {segment_index} at row {inner_box_row} are full. Creating new IB"
+            //     ,
+            //     self.id
+            // );
             // None of the inner boxes in segment have space available at row. Create a new one.
             self.inner_boxes[segment_index].push(InnerBox::new(&self.psi_params));
             // set the index to newly inserted InnerBox
@@ -324,11 +324,11 @@ impl BigBox {
             &self.psi_params.psi_pt,
         );
 
-        println!(
-            "[BB {}] Item {} for ht_index:{ht_index} inserted; segment {segment_index}, inner_box_index {inner_box_index}, ib_row: {inner_box_row}",
-            self.id,
-            item_label.item()
-        );
+        // println!(
+        //     "[BB {}] Item {} for ht_index:{ht_index} inserted; segment {segment_index}, inner_box_index {inner_box_index}, ib_row: {inner_box_row}",
+        //     self.id,
+        //     item_label.item()
+        // );
     }
 
     /// Preprocesses each InnerBox
@@ -449,7 +449,7 @@ impl BigBox {
 pub struct Db {
     cuckoo: Cuckoo,
     big_boxes: Vec<BigBox>,
-    item_set_cache: HashSet<u128>,
+    item_set_cache: HashSet<U256>,
     psi_params: PsiParams,
 }
 
@@ -471,7 +471,7 @@ impl Db {
 
     pub fn insert(&mut self, item_label: &ItemLabel) -> bool {
         // It's Private SET intersection. You cannot insert same item twice!
-        if self.item_set_cache.contains(&item_label.item()) {
+        if self.item_set_cache.contains(item_label.item()) {
             return false;
         }
 
@@ -483,7 +483,7 @@ impl Db {
             big_box.insert(&item_label, *ht_index as usize);
         });
 
-        self.item_set_cache.insert(item_label.item());
+        self.item_set_cache.insert(item_label.item().clone());
 
         true
     }
