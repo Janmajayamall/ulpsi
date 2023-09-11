@@ -568,11 +568,28 @@ impl Db {
 
 #[cfg(test)]
 mod tests {
-    use crate::{server::Server, PsiParams};
+    use crate::{random_u256, time_it};
+
+    use super::*;
+    use rand::thread_rng;
 
     #[test]
-    fn db_works() {
+    fn bench_parallel_inner_box_gen_ceofficients() {
         let psi_params = PsiParams::default();
-        let mut server = Server::new(&psi_params);
+        let mut inner_box = InnerBox::new(&psi_params);
+        let mut rng = thread_rng();
+        for i in 0..InnerBox::max_rows(&psi_params.psi_pt, &psi_params.ct_slots) {
+            while inner_box.ht_rows[i as usize].is_free() {
+                let item_label = {
+                    let item = random_u256(&mut rng);
+                    let label = random_u256(&mut rng);
+                    ItemLabel { item, label }
+                };
+                if inner_box.can_insert(&item_label, i as usize) {
+                    inner_box.insert_item_label(i as usize, &item_label, &psi_params.psi_pt);
+                }
+            }
+        }
+        time_it!("Generate coefficients", inner_box.generate_coefficients(););
     }
 }
