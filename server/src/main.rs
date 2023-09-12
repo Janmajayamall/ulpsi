@@ -56,7 +56,7 @@ fn generate_random_server_set(count: usize) {
 }
 
 /// Runs preprocessing for server using server set stored at `dir_path`/server_set.bin (for ex, data/1000/server_set.bin). Then stores pre-processed server's `Db` at `dir_path`/server_db_preprocessed.bin.
-fn preprocess_and_store_dataset(dir_path: &Path, psi_params: &PsiParams) {
+fn preprocess_and_store_dataset(dir_path: &Path, psi_params: &PsiParams) -> Server {
     // check that preprocessed data already exists. If it does then abort
     let mut server_db_preprocessed_path = PathBuf::from(dir_path);
     server_db_preprocessed_path.push("server_db_preprocessed.bin");
@@ -92,6 +92,8 @@ fn preprocess_and_store_dataset(dir_path: &Path, psi_params: &PsiParams) {
     let mut server_db_preprocessed_file =
         BufWriter::new(std::fs::File::create(server_db_preprocessed_path).unwrap());
     bincode::serialize_into(&mut server_db_preprocessed_file, server.db()).unwrap();
+
+    server
 }
 
 /// Returns an active instance of `Server` by loading preprocessed server db file stored at `server_db_preprocessed`
@@ -135,8 +137,8 @@ fn generate_random_client_intersection_set(intersection_size: usize, dir_path: &
     bincode::serialize_into(&mut client_set_file, &client_set).unwrap();
 }
 
-/// Starts the server using server_set.bin and server_db_preprocessed.bin stored inside `dir_path` directory.
-async fn start_server(dir_path: &Path) {
+/// Starts the server from DB state stored at `dir_path`/server_db_preprocessed.bin.
+async fn start_server_from_stored_db_state(dir_path: &Path) {
     let psi_params = PsiParams::default();
 
     let mut server_db_preprocessed_path = PathBuf::from(dir_path);
@@ -146,6 +148,11 @@ async fn start_server(dir_path: &Path) {
     let server = load_server(&server_db_preprocessed_path, &psi_params);
     server.print_diagnosis();
 
+    start_server(&server).await;
+}
+
+/// Starts a server instance
+async fn start_server(server: &Server) {
     // Bind the listener to the address
     let addr = "127.0.0.1:6379";
     let listener = TcpListener::bind(addr).await.unwrap();
@@ -218,6 +225,9 @@ enum Commands {
     Setup {
         set_size: usize,
     },
+    SetupStart {
+        set_size: usize,
+    },
     Preprocess {
         set_size: usize,
     },
@@ -246,7 +256,14 @@ async fn main() {
 
     match cli.command {
         Commands::Start { set_size } => {
-            start_server(&set_size_to_dir_path(set_size)).await;
+            start_server_from_stored_db_state(&set_size_to_dir_path(set_size)).await;
+        }
+        Commands::SetupStart { set_size } => {
+            let dir_path = set_size_to_dir_path(set_size);
+            let psi_params = PsiParams::default();
+            generate_random_server_set(set_size);
+            let server = preprocess_and_store_dataset(&dir_path, &psi_params);
+            start_server(&server).await;
         }
         Commands::Preprocess { set_size } => {
             let psi_params = PsiParams::default();
@@ -258,6 +275,7 @@ async fn main() {
             generate_random_server_set(set_size);
             preprocess_and_store_dataset(&dir_path, &psi_params);
         }
+
         Commands::GenClientSet {
             server_set_size,
             client_set_size,
