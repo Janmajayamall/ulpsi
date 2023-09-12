@@ -1,4 +1,4 @@
-use bfv::{BfvParameters, EvaluationKeyProto, Evaluator, SecretKey, SecretKeyProto};
+use bfv::{BfvParameters, EvaluationKey, EvaluationKeyProto, Evaluator, SecretKey, SecretKeyProto};
 use crypto_bigint::U256;
 use prost::Message;
 use psi::{
@@ -6,19 +6,16 @@ use psi::{
     process_query_response, serialize_query, ItemLabel, PsiParams, SerializedQueryResponse,
 };
 use rand::thread_rng;
-use std::f32::consts::E;
 use std::io::{Read, Write};
-use std::vec;
+use std::path::{Path, PathBuf};
 use std::{error::Error, io::BufReader};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use traits::TryFromWithParameters;
 
-fn setup_random_client_with_evaluation_key_and_store() {
-    let psi_params = PsiParams::default();
-    let bfv_params = gen_bfv_params(&psi_params);
-    let evaluator = Evaluator::new(bfv_params);
-
+fn generate_random_client_with_evaluation_key_and_store(
+    evaluator: &Evaluator,
+) -> (SecretKey, EvaluationKey) {
     let mut rng = thread_rng();
     let sk = SecretKey::random_with_params(evaluator.params(), &mut rng);
     let ek = generate_evaluation_key(&evaluator, &sk);
@@ -30,19 +27,26 @@ fn setup_random_client_with_evaluation_key_and_store() {
     let ek_serliazed = EvaluationKeyProto::try_from_with_parameters(&ek, evaluator.params());
     let mut ek_bytes = ek_serliazed.encode_to_vec();
 
-    // store files
-    std::fs::create_dir_all("./../data").expect("Create data directory failed");
-    let mut sk_file = std::fs::File::create("./../data/client_secret_key.bin")
-        .expect("Failed to create client_secret_key.bin");
+    // store sk and ek for server
+    let client_dir = "./../data/client";
+    let mut client_sk_path = PathBuf::from(client_dir);
+    client_sk_path.push("client_secret_key.bin");
+    let mut client_ek_path = PathBuf::from(client_dir);
+    client_ek_path.push("client_evaluation_key.bin");
+    std::fs::create_dir_all(client_dir).expect("Create data directory failed");
+    let mut sk_file =
+        std::fs::File::create(client_sk_path).expect("Failed to create client_secret_key.bin");
     sk_file
         .write_all(&mut sk_bytes)
         .expect("Failed to write client_secret_key.bin");
 
-    let mut ek_file = std::fs::File::create("./../data/client_evaluation_key.bin")
-        .expect("Failed to create client_evaluation_key.bin");
+    let mut ek_file =
+        std::fs::File::create(client_ek_path).expect("Failed to create client_evaluation_key.bin");
     ek_file
         .write_all(&mut ek_bytes)
         .expect("Failed to write client_evaluation_key.bin");
+
+    (sk, ek)
 }
 
 pub fn read_client_secret_key(bfv_params: &BfvParameters) -> SecretKey {
@@ -56,23 +60,24 @@ pub fn read_client_secret_key(bfv_params: &BfvParameters) -> SecretKey {
     secret_key
 }
 
-#[tokio::main]
-async fn main() {
+pub async fn simulate_query(client_set_path: &Path) {
     let psi_params = PsiParams::default();
     let bfv_params = gen_bfv_params(&psi_params);
     let evaluator = Evaluator::new(bfv_params);
 
-    // read client set
-    let file =
-        std::fs::File::open("./../data/client_set.bin").expect("Failed to open client_set.bin");
+    println!("Reading Client Set...");
+    let file = std::fs::File::open(client_set_path).expect(&format!(
+        "Failed to open client set at {}",
+        client_set_path.display()
+    ));
     let reader = BufReader::new(file);
     let item_labels: Vec<ItemLabel> =
-        bincode::deserialize_from(reader).expect("Invalid client_set.bin file");
+        bincode::deserialize_from(reader).expect("Invalid client set file");
 
-    // read client's secret key
-    let client_secret_key = read_client_secret_key(evaluator.params());
+    println!("Generating random client secret key and evaluation key...");
+    let (client_secret_key, _) = generate_random_client_with_evaluation_key_and_store(&evaluator);
 
-    // construct query
+    println!("Constructing query...");
     let mut rng = thread_rng();
     let query_set = item_labels
         .iter()
@@ -149,5 +154,14 @@ async fn main() {
         }
     });
 
-    println!("Query Succes!");
+    println!("Query Success!");
+}
+
+#[tokio::main]
+async fn main() {
+    let client_set_path = std::env::args()
+        .nth(1)
+        .expect("Pass path to client intersection set");
+
+    simulate_query(Path::new(&client_set_path)).await;
 }

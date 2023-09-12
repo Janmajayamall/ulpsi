@@ -12,6 +12,7 @@ use itertools::{izip, Itertools};
 use rand::{distributions::Uniform, thread_rng, Rng};
 use rand_chacha::rand_core::le;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use traits::TryEncodingWithParameters;
 
@@ -29,6 +30,7 @@ pub fn decrypt_and_print(
     println!("{tag} - Noise: {noise}; m[{m_start}..{m_end}]: {:?}", m);
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Node {
     target: usize,
     depth: usize,
@@ -266,30 +268,24 @@ fn generate_random_item_labels_and_store(set_size: usize) {
     bincode::serialize_into(server_file, &server_set).unwrap();
 }
 
-fn generate_random_intersection_and_store(intersection_size: usize) {
-    let server_set: Vec<ItemLabel> = bincode::deserialize_from(
-        std::fs::File::open("./../data/server_set.bin").expect("Failed to open server_set.bin"),
-    )
-    .expect("Malformed server_set.bin");
-
-    let set_size = server_set.len();
-
-    assert!(set_size > intersection_size);
+pub fn generate_random_intersection_and_store(
+    server_set: &[ItemLabel],
+    intersection_size: usize,
+) -> Vec<ItemLabel> {
+    assert!(server_set.len() > intersection_size);
 
     let mut inserted_indices = vec![];
     let mut client_set = vec![];
     let mut rng = thread_rng();
     while inserted_indices.len() != intersection_size {
-        let index = rng.gen_range(0..set_size);
+        let index = rng.gen_range(0..server_set.len());
         if !inserted_indices.contains(&index) {
             inserted_indices.push(index);
             client_set.push(server_set[index].clone());
         }
     }
 
-    let mut client_file =
-        std::fs::File::create("./../data/client_set.bin").expect("Failed to create client_set.bin");
-    bincode::serialize_into(&client_file, &client_set).unwrap();
+    client_set
 }
 
 #[cfg(test)]
@@ -367,11 +363,5 @@ mod tests {
 
             assert_eq!(m, vec![expected_m; evaluator.params().degree]);
         })
-    }
-
-    #[test]
-    fn prepare_random_data_big() {
-        generate_random_item_labels_and_store(16000000);
-        generate_random_intersection_and_store(3000);
     }
 }

@@ -4,13 +4,14 @@ use super::{EvalPolyDegree, InnerBox};
 use bfv::{Ciphertext, Encoding, EvaluationKey, Evaluator, Plaintext, Representation};
 use itertools::{izip, Itertools};
 use ndarray::Array2;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
     ops::Deref,
 };
 use traits::TryEncodingWithParameters;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct PSParams {
     low_degree: usize,
     total_degree: usize,

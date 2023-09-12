@@ -1,5 +1,3 @@
-use std::{collections::HashMap, hash::Hash};
-
 use bfv::{
     BfvParameters, Ciphertext, Encoding, EvaluationKey, Evaluator, Plaintext, PolyCache, PolyType,
     Representation, SecretKey, SecretKeyProto,
@@ -8,9 +6,11 @@ use hash::Cuckoo;
 use itertools::{izip, Itertools};
 use rand::thread_rng;
 use rand_chacha::rand_core::le;
+use serde::{Deserialize, Serialize};
 use server::{
     paterson_stockmeyer::PSParams, CiphertextSlots, EvalPolyDegree, HashTableSize, PsiPlaintext,
 };
+use std::{collections::HashMap, hash::Hash};
 
 pub use client::*;
 pub use hash::*;
@@ -26,7 +26,7 @@ mod serialize;
 mod server;
 mod utils;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct PsiParams {
     pub(crate) no_of_hash_tables: u8,
     pub(crate) ht_size: HashTableSize,

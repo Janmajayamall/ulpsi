@@ -22,7 +22,7 @@ pub mod db;
 pub mod paterson_stockmeyer;
 
 /// No. of rows on a hash table
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct HashTableSize(pub(crate) u32);
 
 impl Deref for HashTableSize {
@@ -32,7 +32,7 @@ impl Deref for HashTableSize {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct PsiPlaintext {
     pub(crate) psi_pt_bits: u32,
     pub(crate) psi_pt_bytes: u32,
@@ -66,7 +66,7 @@ impl PsiPlaintext {
 }
 
 /// No. of slots in a single BFV ciphertext. Equivalent to degree of ciphertext.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct CiphertextSlots(pub(crate) u32);
 
 impl Deref for CiphertextSlots {
@@ -77,7 +77,7 @@ impl Deref for CiphertextSlots {
 }
 
 /// Degree of interpolated polynomial
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct EvalPolyDegree(u32);
 
 impl EvalPolyDegree {
@@ -217,6 +217,20 @@ impl Server {
         }
     }
 
+    pub fn new_with_db(db: Db, psi_params: &PsiParams) -> Server {
+        assert_eq!(&db.psi_params, psi_params);
+
+        let evaluator = Evaluator::new(gen_bfv_params(psi_params));
+        let powers_dag = construct_dag(&psi_params.source_powers, psi_params.ps_params.powers());
+
+        Server {
+            powers_dag,
+            db,
+            psi_params: psi_params.clone(),
+            evaluator,
+        }
+    }
+
     pub fn setup(&mut self, item_labels: &[ItemLabel]) {
         // item_labels.iter().for_each(|(i)| {
         //     if self.db.insert(i) {
@@ -236,6 +250,10 @@ impl Server {
 
     pub fn print_diagnosis(&self) {
         self.db.print_diagnosis();
+    }
+
+    pub fn db(&self) -> &Db {
+        &self.db
     }
 }
 #[cfg(test)]

@@ -15,6 +15,7 @@ pub struct HashTableQueryResponse(pub(crate) Vec<Vec<Ciphertext>>);
 /// It helps view a single column spanned across multiple
 /// rows as a single row. This is required since a single data
 /// entry spans across multiple Rows.
+#[derive(Serialize, Deserialize)]
 pub struct InnerBoxRow {
     /// No. of rows in real a single InnerBoxRow spans to
     span: u32,
@@ -52,6 +53,7 @@ impl InnerBoxRow {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct InnerBox {
     coefficients_data: Array2<u32>,
     item_data: Array2<u32>,
@@ -246,6 +248,7 @@ impl InnerBox {
 /// ItemLabel is always appened at the end of the row. To insert, it is checked whether the last InnerBox corresponding in vec corresponding
 /// to segment has enough space at row. If yes, then ItemLabel is inserted. Otherwise, a new InnerBox is created and appended to vec and then
 /// the item is inserted.
+#[derive(Serialize, Deserialize)]
 pub struct BigBox {
     /// Although inner_boxes is a 2d array of `InnerBox`, can't store it as such since length of each row is a not equal
     inner_boxes: Vec<Vec<InnerBox>>,
@@ -463,11 +466,11 @@ impl BigBox {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct Db {
-    cuckoo: Cuckoo,
-    big_boxes: Vec<BigBox>,
-    item_set_cache: HashSet<U256>,
-    psi_params: PsiParams,
+    pub(crate)cuckoo: Cuckoo,
+    pub(crate)big_boxes: Vec<BigBox>,
+    pub(crate)psi_params: PsiParams,
 }
 
 impl Db {
@@ -481,7 +484,6 @@ impl Db {
         Db {
             cuckoo,
             big_boxes,
-            item_set_cache: HashSet::new(),
             psi_params: psi_params.clone(),
         }
     }
@@ -489,6 +491,7 @@ impl Db {
     /// Inserts many ItemLabels. Uses all the cores to reduce insert time
     pub fn insert_many(&mut self, item_labels: &[ItemLabel]) {
         // TODO: check that there are no repeated items
+        println!("Inserting {} ItemLabels", item_labels.len());
 
         // hash using all cores
         let cores = rayon::current_num_threads();
@@ -510,11 +513,6 @@ impl Db {
     }
 
     pub fn insert(&mut self, item_label: &ItemLabel) -> bool {
-        // It's Private SET intersection. You cannot insert same item twice!
-        if self.item_set_cache.contains(item_label.item()) {
-            return false;
-        }
-
         // get index for item for all hash tables
         let indices = self.cuckoo.table_indices(item_label.item());
 
@@ -523,17 +521,11 @@ impl Db {
             big_box.insert(&item_label, *ht_index as usize);
         });
 
-        self.item_set_cache.insert(item_label.item().clone());
-
         true
     }
 
     pub fn preprocess(&mut self) {
         self.big_boxes.par_iter_mut().for_each(|bb| bb.preprocess());
-    }
-
-    pub fn db_size(&self) -> usize {
-        self.item_set_cache.len()
     }
 
     pub fn handle_query(

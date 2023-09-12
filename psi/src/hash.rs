@@ -2,12 +2,14 @@ use crypto_bigint::{Encoding, U256};
 use itertools::Itertools;
 use rand::{distributions::Uniform, CryptoRng, Rng};
 use ring::digest::{self, Digest};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 fn sha256(item: &U256) -> Digest {
     digest::digest(&digest::SHA256, &item.to_le_bytes())
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Cuckoo {
     no_of_tables: u8,
     table_size: u32,
