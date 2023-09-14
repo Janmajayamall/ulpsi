@@ -247,11 +247,6 @@ fn set_size_to_dir_path(set_size: usize) -> PathBuf {
 
 #[tokio::main]
 async fn main() {
-    // generate_random_dataset(16000000);
-    // let psi_params = PsiParams::default();
-    // preprocess_and_store_dataset(Path::new("./../data/16000000"), &psi_params);
-    // // start_server().await;
-    // return;
     let cli = Cli::parse();
 
     match cli.command {
@@ -275,7 +270,6 @@ async fn main() {
             generate_random_server_set(set_size);
             preprocess_and_store_dataset(&dir_path, &psi_params);
         }
-
         Commands::GenClientSet {
             server_set_size,
             client_set_size,

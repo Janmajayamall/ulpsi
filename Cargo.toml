@@ -5,3 +5,21 @@ members = [
     "server",
     "client"
 ]
+
+[workspace.package]
+name = "unbalanced-labelled-psi"
+version = "0.1.0"
+edition = "2021"
+authors = [
+    "Janmajaya Mall <janmajayamall@protonmail.com>"
+]
+
+[workspace.dependencies]
+bfv = {git = "https://github.com/Janmajayamall/bfv.git", branch = "dev", features = ["serialize"]}
+traits = {git = "https://github.com/Janmajayamall/bfv.git", branch = "dev"}
+prost = "0.11.9"
+rand = "0.8.5"
+rand_chacha = "0.3.1"
+bincode = "1.3.3"
+crypto-bigint = "0.5.3"
+tokio = {version = "1.32.0", features = ["full"]}

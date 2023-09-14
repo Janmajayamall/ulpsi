@@ -1,4 +1,3 @@
-use rand_chacha::rand_core::le;
 use rayon::{prelude::*, slice::ParallelSlice};
 
 use super::*;
@@ -468,9 +467,9 @@ impl BigBox {
 
 #[derive(Deserialize, Serialize)]
 pub struct Db {
-    pub(crate)cuckoo: Cuckoo,
-    pub(crate)big_boxes: Vec<BigBox>,
-    pub(crate)psi_params: PsiParams,
+    pub(crate) cuckoo: Cuckoo,
+    pub(crate) big_boxes: Vec<BigBox>,
+    pub(crate) psi_params: PsiParams,
 }
 
 impl Db {
