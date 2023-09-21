@@ -119,6 +119,7 @@ impl InnerBox {
     /// (2) Chunks of `item` in `ItemLabel` must not collide with existing entries in their respective real rows.
     fn can_insert(&self, item_label: &ItemLabel, row: usize) -> bool {
         if !self.ht_rows[row].is_free() {
+            dbg!("OOOO");
             return false;
         }
 
@@ -139,9 +140,13 @@ impl InnerBox {
                 .chunks_exact(col_span as usize)
             {
                 if exisiting_item_chunk.eq(&item_chunk) {
-                    dbg!(exisiting_item_chunk, &item_chunk, item_label.item());
+                    // dbg!(
+                    //     bytes_to_u32(exisiting_item_chunk),
+                    //     bytes_to_u32(&item_chunk),
+                    //     item_label.item()
+                    // );
                 }
-                if exisiting_item_chunk.eq(&item_chunk) {
+                if exisiting_item_chunk != vec![0, 0] && exisiting_item_chunk.eq(&item_chunk) {
                     can_insert = false;
                     break;
                 }

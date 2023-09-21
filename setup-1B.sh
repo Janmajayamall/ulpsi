@@ -1,8 +1,8 @@
 #!/bin/bash
 
-git checkout dev
+# git checkout dev
 
-BILLION=10000
+BILLION=1000000
 
 # server setup for 1 billion
 cd ./server
