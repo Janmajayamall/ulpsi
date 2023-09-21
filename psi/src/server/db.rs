@@ -73,7 +73,7 @@ pub struct InnerBox {
     ht_rows: Vec<InnerBoxRow>,
     /// Is set to initialised when a new item is added
     initialised: bool,
-    item_data_hash_set: HashSet<(usize, u32)>,
+    item_data_hash_set: HashSet<(usize, u16)>,
     psi_params: PsiParams,
 }
 
@@ -119,7 +119,6 @@ impl InnerBox {
     /// (2) Chunks of `item` in `ItemLabel` must not collide with existing entries in their respective real rows.
     fn can_insert(&self, item_label: &ItemLabel, row: usize) -> bool {
         if !self.ht_rows[row].is_free() {
-            dbg!("OOOO");
             return false;
         }
 
@@ -132,25 +131,33 @@ impl InnerBox {
             let (item_chunk, _) =
                 item_label.get_chunk_at_index((i - real_row) as u32, &self.psi_params.psi_pt);
 
-            for exisiting_item_chunk in self
-                .item_data
-                .row(i)
-                .as_slice()
-                .unwrap()
-                .chunks_exact(col_span as usize)
+            if self
+                .item_data_hash_set
+                .contains(&(i, bytes_to_u16(&item_chunk)))
             {
-                if exisiting_item_chunk.eq(&item_chunk) {
-                    // dbg!(
-                    //     bytes_to_u32(exisiting_item_chunk),
-                    //     bytes_to_u32(&item_chunk),
-                    //     item_label.item()
-                    // );
-                }
-                if exisiting_item_chunk != vec![0, 0] && exisiting_item_chunk.eq(&item_chunk) {
-                    can_insert = false;
-                    break;
-                }
+                can_insert = false;
+                break;
             }
+
+            // for exisiting_item_chunk in self
+            //     .item_data
+            //     .row(i)
+            //     .as_slice()
+            //     .unwrap()
+            //     .chunks_exact(col_span as usize)
+            // {
+            //     if exisiting_item_chunk.eq(&item_chunk) {
+            //         // dbg!(
+            //         //     bytes_to_u32(exisiting_item_chunk),
+            //         //     bytes_to_u32(&item_chunk),
+            //         //     item_label.item()
+            //         // );
+            //     }
+            //     if exisiting_item_chunk != vec![0, 0] && exisiting_item_chunk.eq(&item_chunk) {
+            //         can_insert = false;
+            //         break;
+            //     }
+            // }
         }
         can_insert
     }
@@ -185,6 +192,9 @@ impl InnerBox {
                 let entry = self.label_data.get_mut((ri, ci)).unwrap();
                 *entry = label_chunk[ci - real_col_start];
             }
+
+            self.item_data_hash_set
+                .insert((ri, bytes_to_u16(&item_chunk)));
         }
 
         // increase columns occupancy by 1

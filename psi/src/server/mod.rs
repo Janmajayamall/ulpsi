@@ -190,6 +190,13 @@ pub fn bytes_to_u32(bytes: &[u8]) -> u32 {
     })
 }
 
+pub fn bytes_to_u16(bytes: &[u8]) -> u16 {
+    bytes.iter().enumerate().fold(0u16, |acc, (index, byte)| {
+        let acc = acc + ((*byte as u16) << (index * 8));
+        acc
+    })
+}
+
 pub struct Server {
     db: Db,
     powers_dag: HashMap<usize, Node>,
