@@ -342,9 +342,15 @@ impl BigBox {
         item_labels: &[ItemLabel],
         item_labels_table_indices: &[Vec<u32>],
     ) {
-        izip!(item_labels.iter(), item_labels_table_indices.iter()).for_each(|(il, tb_indices)| {
-            self.insert(il, tb_indices[self.id] as usize);
-        });
+        izip!(item_labels.iter(), item_labels_table_indices.iter())
+            .enumerate()
+            .for_each(|(index, (il, tb_indices))| {
+                // Print at every million^th item
+                if index % 1000000 == 0 {
+                    println!("[BB {}] Inserting Item Index {index}", self.id);
+                }
+                self.insert(il, tb_indices[self.id] as usize);
+            });
     }
 
     pub fn insert(&mut self, item_label: &ItemLabel, ht_index: usize) {

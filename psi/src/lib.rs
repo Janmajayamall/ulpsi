@@ -47,7 +47,7 @@ impl Default for PsiParams {
         let psi_pt = PsiPlaintext::new(256, 16, 65537);
 
         PsiParams {
-            no_of_hash_tables: 1,
+            no_of_hash_tables: 3,
             ht_size: HashTableSize(1 << 12),
             ct_slots: CiphertextSlots(1 << 13),
             eval_degree: ps_params.eval_degree(),
