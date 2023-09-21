@@ -4,7 +4,7 @@ use bfv::{EvaluationKey, Evaluator, SecretKey};
 use itertools::Itertools;
 use psi::{
     construct_query, db, deserialize_query_response, gen_bfv_params, gen_random_item_labels,
-    process_query_response, serialize_query_response, PsiParams, Server,
+    process_query_response, serialize_query_response, time_it, PsiParams, Server,
 };
 use rand::thread_rng;
 
@@ -12,7 +12,7 @@ fn main() {
     let psi_params = PsiParams::default();
     let mut server = Server::new(&psi_params);
 
-    let set_size = 100;
+    let set_size = 100000;
     let raw_item_labels = gen_random_item_labels(set_size);
 
     server.setup(&raw_item_labels);
@@ -23,7 +23,7 @@ fn main() {
     let mut expected_item_label_map = HashMap::new();
     let query_set = raw_item_labels
         .iter()
-        .take(10)
+        .take(1)
         .map(|il| {
             expected_item_label_map.insert(il.item(), il.label());
             il.item().clone()
@@ -39,7 +39,7 @@ fn main() {
 
     let client_query_state = construct_query(&query_set, &psi_params, &evaluator, &sk, &mut rng);
 
-    let query_response = server.query(client_query_state.query(), &ek);
+    time_it!("Server time", let query_response = server.query(client_query_state.query(), &ek););
 
     {
         let serialized_query_response =

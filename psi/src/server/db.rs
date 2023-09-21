@@ -1,4 +1,7 @@
+use ndarray::Axis;
 use rayon::{prelude::*, slice::ParallelSlice};
+
+use crate::time_it;
 
 use super::*;
 
@@ -16,16 +19,22 @@ pub struct HashTableQueryResponse(pub(crate) Vec<Vec<Ciphertext>>);
 /// entry spans across multiple Rows.
 #[derive(Serialize, Deserialize)]
 pub struct InnerBoxRow {
-    /// No. of rows in real a single InnerBoxRow spans to
-    span: u32,
+    /// No. of real rows in a single InnerBoxRow
+    row_span: u32,
+    /// No. of real cols u8s in single InnerBoxRow column
+    col_span: u32,
     max_cols: u32,
     // no. of curr columns occupied
     curr_cols: u32,
 }
 impl InnerBoxRow {
-    fn new(span: u32, eval_degree: &EvalPolyDegree) -> InnerBoxRow {
+    fn new(psi_pt: &PsiPlaintext, eval_degree: &EvalPolyDegree) -> InnerBoxRow {
+        let row_span = psi_pt.slots_required();
+        // A real row within InnerBoxRow is byte buffer. Thus a single InnerBoxRow column spans across multiple columns to store value with `bfv_pt_bytes` bytes.
+        let col_span = psi_pt.bfv_pt_bytes;
         InnerBoxRow {
-            span,
+            row_span,
+            col_span,
             max_cols: eval_degree.inner_box_columns(),
             curr_cols: 0,
         }
@@ -47,16 +56,20 @@ impl InnerBoxRow {
         self.curr_cols as usize
     }
 
+    fn map_to_real_col(&self, col: usize) -> usize {
+        self.col_span as usize * col
+    }
+
     fn map_to_real_row(&self, row: usize) -> usize {
-        self.span as usize * row
+        self.row_span as usize * row
     }
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct InnerBox {
     coefficients_data: Array2<u32>,
-    item_data: Array2<u32>,
-    label_data: Array2<u32>,
+    item_data: Array2<u8>,
+    label_data: Array2<u8>,
     ht_rows: Vec<InnerBoxRow>,
     /// Is set to initialised when a new item is added
     initialised: bool,
@@ -74,18 +87,14 @@ impl InnerBox {
         let row_count = psi_params.ct_slots.0 / slots_per_entry;
         let ht_rows = (0..row_count)
             .into_iter()
-            .map(|_| InnerBoxRow::new(slots_per_entry, &psi_params.eval_degree))
+            .map(|_| InnerBoxRow::new(&psi_params.psi_pt, &psi_params.eval_degree))
             .collect_vec();
 
         // initialise containers for data
-        let label_data = Array2::<u32>::zeros((
-            psi_params.ct_slots.0 as usize,
-            psi_params.eval_degree.inner_box_columns() as usize,
-        ));
-        let item_data = Array2::<u32>::zeros((
-            psi_params.ct_slots.0 as usize,
-            psi_params.eval_degree.inner_box_columns() as usize,
-        ));
+        let col_count =
+            (psi_params.eval_degree.inner_box_columns() * psi_params.psi_pt.bfv_pt_bytes) as usize;
+        let label_data = Array2::<u8>::zeros((psi_params.ct_slots.0 as usize, col_count));
+        let item_data = Array2::<u8>::zeros((psi_params.ct_slots.0 as usize, col_count));
 
         // println!(
         //     "Created InnerBox with {row_count} rows and {} cols",
@@ -113,17 +122,29 @@ impl InnerBox {
             return false;
         }
 
+        let row_span = self.ht_rows[row].row_span;
+        let col_span = self.ht_rows[row].col_span;
         // check that none of the chunks of ItemLabel's `item` collide with existing chunks in respective real rows.
-        let real_row = row * self.psi_params.psi_pt.slots_required() as usize;
+        let real_row = row * row_span as usize;
         let mut can_insert = true;
         for i in real_row..real_row + self.psi_params.psi_pt.slots_required() as usize {
             let (item_chunk, _) =
                 item_label.get_chunk_at_index((i - real_row) as u32, &self.psi_params.psi_pt);
 
-            if self.item_data_hash_set.contains(&(i, item_chunk)) {
-                // println!("[IB] Found chunk collision for ItemLabel. item: {}, chunk: {}, ib_row: {row}, real_row:{i}", item_label.item(), item_chunk);
-                can_insert = false;
-                break;
+            for exisiting_item_chunk in self
+                .item_data
+                .row(i)
+                .as_slice()
+                .unwrap()
+                .chunks_exact(col_span as usize)
+            {
+                if exisiting_item_chunk.eq(&item_chunk) {
+                    dbg!(exisiting_item_chunk, &item_chunk, item_label.item());
+                }
+                if exisiting_item_chunk.eq(&item_chunk) {
+                    can_insert = false;
+                    break;
+                }
             }
         }
         can_insert
@@ -133,27 +154,32 @@ impl InnerBox {
     fn insert_item_label(&mut self, row: usize, item_label: &ItemLabel, psi_pt: &PsiPlaintext) {
         // get next free column at InnerRow
         let col = self.ht_rows[row].next_free_col_index();
+        let col_span = self.ht_rows[row].col_span as usize;
+        let real_col_start = col * col_span;
+        let real_col_end = col * col_span + col_span;
+
         // map InnerRow to row in container row
         let real_row = row * self.psi_params.psi_pt.slots_required() as usize;
-        for i in real_row..(real_row + self.psi_params.psi_pt.slots_required() as usize) {
+
+        for ri in real_row..(real_row + self.psi_params.psi_pt.slots_required() as usize) {
             // get data chunk
-            let chunk_index = (i - real_row) as u32;
+            let chunk_index = (ri - real_row) as u32;
             let (item_chunk, label_chunk) = item_label.get_chunk_at_index(chunk_index, psi_pt);
 
             // println!(
-            //     "[IB] Inserting ItemLabel - item:{}, chunk_index:{chunk_index}, chunk:{item_chunk}, label:{label_chunk}, InnerBox Row:{row}, Real Row:{i}",
+            //     "[IB] Inserting ItemLabel - item:{}, chunk_index:{chunk_index}, chunk:{:?}, label:{:?}, InnerBox Row:{row}, Real Row:{ri}",
             //     item_label.item(),
+            //     &item_chunk,
+            //     &label_chunk
             // );
 
             // add the item and label chunk
-            let entry = self.item_data.get_mut((i, col)).unwrap();
-            *entry = item_chunk;
-            let entry = self.label_data.get_mut((i, col)).unwrap();
-            *entry = label_chunk;
-
-            // add `item_chunk` as entry to item_data_hash_set for corresponding real row.
-            // This is to check for collisions later.
-            self.item_data_hash_set.insert((i, item_chunk));
+            for ci in real_col_start..real_col_end {
+                let entry = self.item_data.get_mut((ri, ci)).unwrap();
+                *entry = item_chunk[ci - real_col_start];
+                let entry = self.label_data.get_mut((ri, ci)).unwrap();
+                *entry = label_chunk[ci - real_col_start];
+            }
         }
 
         // increase columns occupancy by 1
@@ -170,6 +196,11 @@ impl InnerBox {
     ///
     /// TODO: Avoid rows that haven't been touched
     fn generate_coefficients(&mut self) {
+        self.coefficients_data = Array2::<u32>::zeros((
+            self.psi_params.ct_slots.0 as usize,
+            self.psi_params.eval_degree.inner_box_columns() as usize,
+        ));
+
         println!(
             "
             --------------------------------------
@@ -178,12 +209,9 @@ impl InnerBox {
 
             ",
             self.ht_rows.len(),
-            self.item_data.shape()[1],
-            self.item_data.shape()[0]
+            self.coefficients_data.shape()[1],
+            self.coefficients_data.shape()[0]
         );
-        let shape = self.item_data.shape();
-        self.coefficients_data = Array2::<u32>::zeros((shape[0], shape[1]));
-        // TODO: can we parallelise across each row as well?
 
         izip!(
             self.coefficients_data.outer_iter_mut(),
@@ -198,15 +226,22 @@ impl InnerBox {
 
             // limit polynomial interpolation to maximum columns occupied
             let cols_occupied = self.ht_rows[ibr_index].curr_cols as usize;
+            let col_span = self.ht_rows[ibr_index].col_span as usize;
 
             // TODO: uncomment
             // println!("[IB] Interpolating polynomial of degree {cols_occupied}");
 
-            let c = newton_interpolate(
-                &item.as_slice().unwrap()[..cols_occupied],
-                &label.as_slice().unwrap()[..cols_occupied],
-                self.psi_params.psi_pt.bfv_pt as u32,
-            );
+            // convert buffers to values for interpolation
+            let x = item.as_slice().unwrap()[..col_span * cols_occupied]
+                .chunks_exact(col_span)
+                .map(|value_bytes| bytes_to_u32(value_bytes))
+                .collect_vec();
+            let y = label.as_slice().unwrap()[..col_span * cols_occupied]
+                .chunks_exact(col_span)
+                .map(|value_bytes| bytes_to_u32(value_bytes))
+                .collect_vec();
+
+            let c = newton_interpolate(&x, &y, self.psi_params.psi_pt.bfv_pt as u32);
             coeffs.as_slice_mut().unwrap()[..cols_occupied].copy_from_slice(&c);
         });
 

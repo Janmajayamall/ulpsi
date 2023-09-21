@@ -111,18 +111,21 @@ impl ItemLabel {
     /// `item` is greater
     ///
     /// TODO: Switch this to an iterator
-    pub fn get_chunk_at_index(&self, chunk_index: u32, psi_pt: &PsiPlaintext) -> (u32, u32) {
+    pub fn get_chunk_at_index(
+        &self,
+        chunk_index: u32,
+        psi_pt: &PsiPlaintext,
+    ) -> (Vec<u8>, Vec<u8>) {
         let bytes_per_chunk = psi_pt.bytes_per_chunk();
         let bytes_to_skip = (chunk_index * bytes_per_chunk) as usize;
 
-        let item_chunk_bytes =
-            &self.item().to_le_bytes()[bytes_to_skip..bytes_to_skip + bytes_per_chunk as usize];
-        let label_chunk_bytes =
-            &self.label().to_le_bytes()[bytes_to_skip..bytes_to_skip + bytes_per_chunk as usize];
-        (
-            bytes_to_u32(&item_chunk_bytes),
-            bytes_to_u32(&label_chunk_bytes),
-        )
+        let item_chunk_bytes = self.item().to_le_bytes()
+            [bytes_to_skip..bytes_to_skip + bytes_per_chunk as usize]
+            .to_vec();
+        let label_chunk_bytes = self.label().to_le_bytes()
+            [bytes_to_skip..bytes_to_skip + bytes_per_chunk as usize]
+            .to_vec();
+        (item_chunk_bytes, label_chunk_bytes)
     }
 }
 

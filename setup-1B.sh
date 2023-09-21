@@ -2,7 +2,7 @@
 
 git checkout dev
 
-BILLION=1000000000
+BILLION=10000
 
 # server setup for 1 billion
 cd ./server
