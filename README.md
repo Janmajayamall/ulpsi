@@ -47,9 +47,10 @@ For example, if you ran `gen-client-set` for server set size 1M and client set 4
 
 ## Benchmarks
 
-| Machine          | Cient set size | Server set size | Item size (bits) | Label size (bits) | Client upload cost (MB) | Client download cost (MB) | Server runtime (ms) |
-| ---------------- | -------------- | --------------- | ---------------- | ----------------- | ----------------------- | ------------------------- | ------------------- |
-| [m6a.16xlarge]() | 4000           | 16M             | 256              | 256               | 21                      | 14.1                      | 3728                |
+| Machine                                                      | Cient set size | Server set size | Item size (bits) | Label size (bits) | Client upload cost (MB) | Client download cost (MB) | Server runtime (ms) |
+| ------------------------------------------------------------ | -------------- | --------------- | ---------------- | ----------------- | ----------------------- | ------------------------- | ------------------- |
+| [m6a.16xlarge](https://aws.amazon.com/ec2/instance-types/)   | 4000           | 16M             | 256              | 256               | 21                      | 14.1                      | 3728                |
+| [x2idn.16xlarge](https://aws.amazon.com/ec2/instance-types/) | 4000           | 500M            | 256              | 256               | 21                      | 227                       | 80676               |
 
 ## To do's
 
