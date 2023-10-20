@@ -47,7 +47,7 @@ cargo run --release -- ./path/to/client_set.bin
 For example, if you ran `gen-client-set` for server set size 1M and client set 4000 then set the path to `./../data/1000000/client_set.bin`.
 
 > **Note**
-> By default client set size defaults to max. capacity 4096. This is because other parameters are somewhat optimal when client set size is set to 4096. You may choose to decrease max. capacity of client set size by setting `ht_size` in `PsiParams::default` to some power of 2 >= 512. However, I should note that although this should reduce client-server and server-client communication cost, the costs will not be optimal (and most certainly the costs can be improved a bit, although not very signficantly).
+> By default client set size defaults to max. capacity 4096. This is because other parameters are somewhat optimal when client set size is set to 4096. You may choose to decrease max. capacity of client set size by setting `ht_size` in `PsiParams::default` to some power of 2 >= 512. However, I should note that although this should reduce client-server and server-client communication cost, the costs will not be optimal. Most certainly they cost for smaller client set sizes can be reduced by brute forcing and finding optimal parameters.
 
 ## Benchmarks
 
@@ -77,6 +77,9 @@ For example, if you ran `gen-client-set` for server set size 1M and client set 4
 | [x2idn.16xlarge](https://aws.amazon.com/ec2/instance-types/) | 4000           | 200M            | 256              | 256               | 21                      | 94.6                      | 33976               |
 | [x2idn.16xlarge](https://aws.amazon.com/ec2/instance-types/) | 4000           | 300M            | 256              | 256               | 21                      | 138.512                   | 49806               |
 | [x2idn.16xlarge](https://aws.amazon.com/ec2/instance-types/) | 4000           | 500M            | 256              | 256               | 21                      | 227                       | 80676               |
+
+> **Note**
+> Notice the oddity that only for server set size 10M, client download cost and server runtime gets worse as client set size increases. This is because, for benchmarks, we have re-used optimal parameters for client set size 4096 across all client set sizes.
 
 ## To do's
 
