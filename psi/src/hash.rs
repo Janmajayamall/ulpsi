@@ -119,6 +119,8 @@ mod tests {
 
     use rand::{thread_rng, Rng};
 
+    use crate::time_it;
+
     use super::*;
 
     #[test]
@@ -139,5 +141,17 @@ mod tests {
         }
 
         construct_hash_tables(&queue, &hasher);
+    }
+
+    #[test]
+    fn test_hash() {
+        let mut rng = thread_rng();
+        time_it!(
+            "Sha256",
+            let mut data = random_u256(&mut rng);
+            for i in 0..100000000 {
+                let _ = sha256(&data);
+            }
+        );
     }
 }

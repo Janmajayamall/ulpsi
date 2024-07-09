@@ -117,8 +117,8 @@ mod tests {
 
     #[test]
     fn divided_difference_matrix_correct() {
-        let x = vec![1, 4, 2, 4, 2, 4, 56, 6];
-        let y: Vec<u32> = vec![1, 4, 2, 4, 2, 4, 56, 6];
+        let x = vec![1, 2, 3, 4, 5, 6];
+        let y: Vec<u32> = vec![1, 4, 2, 4, 1, 4];
         let matrix = divided_matrix(&x, &y, &Modulus::new(65537));
         println!("{:?}", matrix);
     }
@@ -150,11 +150,13 @@ mod tests {
             }
         }
 
-        time_it!("Newton Interpolate", let coeffs = newton_interpolate(&x, &y, modq););
+        for _ in 0..100 {
+            time_it!("Newton Interpolate", let coeffs = newton_interpolate(&x, &y, modq););
 
-        for i in 0..degree {
-            let y_res = evaluate_poly(x[i], &coeffs, modq);
-            assert_eq!(y_res, y[i]);
+            for i in 0..degree {
+                let y_res = evaluate_poly(x[i], &coeffs, modq);
+                assert_eq!(y_res, y[i]);
+            }
         }
     }
 
